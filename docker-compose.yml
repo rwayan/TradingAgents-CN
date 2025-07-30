@@ -24,7 +24,7 @@ services:
       # 时区配置
       TZ: "Asia/Shanghai"
       # 日志配置
-      TRADINGAGENTS_LOG_LEVEL: "INFO"
+      TRADINGAGENTS_LOG_LEVEL: "DEBUG"
       TRADINGAGENTS_LOG_DIR: "/app/logs"
       TRADINGAGENTS_LOG_FILE: "/app/logs/tradingagents.log"
       TRADINGAGENTS_LOG_MAX_SIZE: "100MB"
