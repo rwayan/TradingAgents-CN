@@ -723,17 +723,17 @@ class StockDataPreparer:
             
             # 尝试获取期货数据 - 使用期货数据接口
             try:
-                from tradingagents.dataflows.futures_data import get_futures_data_unified
+                from tradingagents.dataflows.data_source_manager import get_futures_data_unified
                 historical_data = get_futures_data_unified(formatted_code, start_date_str, end_date_str)
-            except ImportError:
+            except ImportError as e:
                 # 如果期货数据模块不存在，返回相应错误
-                logger.warning(f"⚠️ [期货数据] 期货数据模块未找到")
+                logger.warning(f"⚠️ [期货数据] 期货数据模块未找到: {e}")
                 return StockDataPreparationResult(
                     is_valid=False,
                     stock_code=formatted_code,
                     market_type="期货",
-                    error_message=f"期货数据模块未配置",
-                    suggestion="请确保已正确配置期货数据获取模块"
+                    error_message=f"期货数据模块未配置: {str(e)}",
+                    suggestion="请确保已正确配置期货数据获取模块和相关依赖"
                 )
 
             if historical_data and "❌" not in historical_data and "错误" not in historical_data and "无法获取" not in historical_data:
