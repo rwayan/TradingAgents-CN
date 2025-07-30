@@ -16,6 +16,9 @@ import warnings
 from tradingagents.utils.logging_init import setup_dataflow_logging
 logger = setup_dataflow_logging()
 
+# 导入期货合约管理器
+from .futures_contract_manager import get_contract_manager
+
 warnings.filterwarnings('ignore')
 
 
@@ -35,90 +38,10 @@ class TqSdkFuturesAdapter:
         self.api = None
         self.is_connected = False
         
-        # 期货指数合约映射表
-        self.index_contracts = {
-            # 上期所
-            'CU': 'SHFE.CU99',    # 沪铜指数
-            'AL': 'SHFE.AL99',    # 沪铝指数
-            'ZN': 'SHFE.ZN99',    # 沪锌指数
-            'PB': 'SHFE.PB99',    # 沪铅指数
-            'NI': 'SHFE.NI99',    # 沪镍指数
-            'SN': 'SHFE.SN99',    # 沪锡指数
-            'AU': 'SHFE.AU99',    # 黄金指数
-            'AG': 'SHFE.AG99',    # 白银指数
-            'RB': 'SHFE.RB99',    # 螺纹钢指数
-            'HC': 'SHFE.HC99',    # 热卷指数
-            'SS': 'SHFE.SS99',    # 不锈钢指数
-            'FU': 'SHFE.FU99',    # 燃料油指数
-            'BU': 'SHFE.BU99',    # 沥青指数
-            'RU': 'SHFE.RU99',    # 橡胶指数
-            
-            # 大商所
-            'C': 'DCE.C99',       # 玉米指数
-            'CS': 'DCE.CS99',     # 玉米淀粉指数
-            'A': 'DCE.A99',       # 豆一指数
-            'B': 'DCE.B99',       # 豆二指数
-            'M': 'DCE.M99',       # 豆粕指数
-            'Y': 'DCE.Y99',       # 豆油指数
-            'P': 'DCE.P99',       # 棕榈油指数
-            'J': 'DCE.J99',       # 焦炭指数
-            'JM': 'DCE.JM99',     # 焦煤指数
-            'I': 'DCE.I99',       # 铁矿石指数
-            'JD': 'DCE.JD99',     # 鸡蛋指数
-            'L': 'DCE.L99',       # 聚乙烯指数
-            'V': 'DCE.V99',       # PVC指数
-            'PP': 'DCE.PP99',     # 聚丙烯指数
-            
-            # 郑商所
-            'CF': 'CZCE.CF99',    # 棉花指数
-            'SR': 'CZCE.SR99',    # 白糖指数
-            'TA': 'CZCE.TA99',    # PTA指数
-            'OI': 'CZCE.OI99',    # 菜油指数
-            'MA': 'CZCE.MA99',    # 甲醇指数
-            'ZC': 'CZCE.ZC99',    # 动力煤指数
-            'FG': 'CZCE.FG99',    # 玻璃指数
-            'RM': 'CZCE.RM99',    # 菜粕指数
-            'AP': 'CZCE.AP99',    # 苹果指数
-            'CJ': 'CZCE.CJ99',    # 红枣指数
-            'UR': 'CZCE.UR99',    # 尿素指数
-            'SA': 'CZCE.SA99',    # 纯碱指数
-            'PF': 'CZCE.PF99',    # 短纤指数
-            
-            # 中金所
-            'IF': 'CFFEX.IF99',   # 沪深300股指指数
-            'IH': 'CFFEX.IH99',   # 上证50股指指数
-            'IC': 'CFFEX.IC99',   # 中证500股指指数
-            'IM': 'CFFEX.IM99',   # 中证1000股指指数
-            'T': 'CFFEX.T99',     # 10年期国债指数
-            'TF': 'CFFEX.TF99',   # 5年期国债指数
-            'TS': 'CFFEX.TS99',   # 2年期国债指数
-            
-            # 上海国际能源中心
-            'SC': 'INE.SC99',     # 原油指数
-            'LU': 'INE.LU99',     # 低硫燃料油指数
-            'BC': 'INE.BC99',     # 国际铜指数
-            
-            # 广期所
-            'SI': 'GFEX.SI99',    # 工业硅指数
-            'LC': 'GFEX.LC99',    # 碳酸锂指数
-        }
+        # 使用期货合约管理器
+        self.contract_manager = get_contract_manager()
         
-        # 期货品种中文名称
-        self.futures_names = {
-            'CU': '沪铜', 'AL': '沪铝', 'ZN': '沪锌', 'PB': '沪铅', 'NI': '沪镍',
-            'SN': '沪锡', 'AU': '黄金', 'AG': '白银', 'RB': '螺纹钢', 'HC': '热卷',
-            'SS': '不锈钢', 'FU': '燃料油', 'BU': '沥青', 'RU': '橡胶',
-            'C': '玉米', 'CS': '玉米淀粉', 'A': '豆一', 'B': '豆二', 'M': '豆粕',
-            'Y': '豆油', 'P': '棕榈油', 'J': '焦炭', 'JM': '焦煤', 'I': '铁矿石',
-            'JD': '鸡蛋', 'L': '聚乙烯', 'V': 'PVC', 'PP': '聚丙烯',
-            'CF': '棉花', 'SR': '白糖', 'TA': 'PTA', 'OI': '菜油', 'MA': '甲醇',
-            'ZC': '动力煤', 'FG': '玻璃', 'RM': '菜粕', 'AP': '苹果', 'CJ': '红枣',
-            'UR': '尿素', 'SA': '纯碱', 'PF': '短纤',
-            'IF': '沪深300股指', 'IH': '上证50股指', 'IC': '中证500股指', 'IM': '中证1000股指',
-            'T': '10年期国债', 'TF': '5年期国债', 'TS': '2年期国债',
-            'SC': '原油', 'LU': '低硫燃料油', 'BC': '国际铜',
-            'SI': '工业硅', 'LC': '碳酸锂'
-        }
+        logger.info("🔧 天勤期货数据适配器初始化完成")
 
     async def connect(self):
         """建立天勤连接"""
@@ -175,31 +98,42 @@ class TqSdkFuturesAdapter:
         if '.' in symbol and '99' in symbol:
             return symbol
         
-        # 移除数字后缀，提取品种代码
+        # 使用合约管理器解析代码
+        parsed_symbol, is_index = self.contract_manager.parse_futures_code(symbol)
+        
+        if parsed_symbol:
+            # 获取完整代码
+            full_code = self.contract_manager.get_full_code(parsed_symbol)
+            if full_code:
+                return full_code
+        
+        # 如果解析失败，尝试直接从输入构建
         if symbol.endswith('99'):
-            symbol = symbol[:-2]
+            base_symbol = symbol[:-2]
         elif len(symbol) > 2 and symbol[-2:].isdigit():
-            symbol = symbol[:-2]
+            base_symbol = symbol[:-2]
         elif len(symbol) > 4 and symbol[-4:].isdigit():
-            symbol = symbol[:-4]
-        
-        # 查找对应的指数合约
-        if symbol in self.index_contracts:
-            return self.index_contracts[symbol]
-        
-        # 如果找不到，尝试推测交易所
-        if symbol in ['IF', 'IH', 'IC', 'IM', 'T', 'TF', 'TS']:
-            return f'CFFEX.{symbol}99'
-        elif symbol in ['SC', 'LU', 'BC']:
-            return f'INE.{symbol}99'
-        elif symbol in ['SI', 'LC']:
-            return f'GFEX.{symbol}99'
-        elif symbol in ['CU', 'AL', 'ZN', 'PB', 'NI', 'SN', 'AU', 'AG', 'RB', 'HC', 'SS', 'FU', 'BU', 'RU']:
-            return f'SHFE.{symbol}99'
-        elif symbol in ['C', 'CS', 'A', 'B', 'M', 'Y', 'P', 'J', 'JM', 'I', 'JD', 'L', 'V', 'PP']:
-            return f'DCE.{symbol}99'
+            base_symbol = symbol[:-4]
         else:
-            return f'CZCE.{symbol}99'
+            base_symbol = symbol
+        
+        # 尝试获取完整代码
+        full_code = self.contract_manager.get_full_code(base_symbol)
+        if full_code:
+            return full_code
+        
+        # 最后的兜底逻辑
+        logger.warning(f"⚠️ 无法识别期货代码: {symbol}，返回原始代码")
+        return symbol
+
+    def get_futures_name(self, symbol: str) -> str:
+        """获取期货品种中文名称"""
+        parsed_symbol, is_index = self.contract_manager.parse_futures_code(symbol)
+        if parsed_symbol:
+            contract = self.contract_manager.get_contract(parsed_symbol)
+            if contract:
+                return contract.name
+        return f'期货{symbol.upper()}'
 
     def _extract_underlying(self, symbol: str) -> str:
         """提取期货品种代码"""
@@ -218,27 +152,37 @@ class TqSdkFuturesAdapter:
         Returns:
             Dict: 期货基本信息
         """
-        underlying = self._extract_underlying(symbol)
+        parsed_symbol, is_index = self.contract_manager.parse_futures_code(symbol)
+        
+        if parsed_symbol:
+            contract = self.contract_manager.get_contract(parsed_symbol)
+            if contract:
+                return {
+                    'symbol': contract.full_code,
+                    'underlying': contract.symbol,
+                    'name': contract.name,
+                    'exchange': contract.exchange.name,
+                    'exchange_name': contract.exchange.value,
+                    'category': contract.category.value,
+                    'multiplier': contract.multiplier,
+                    'min_change': contract.min_change,
+                    'margin_rate': contract.margin_rate,
+                    'trading_unit': contract.trading_unit,
+                    'is_futures': True,
+                    'is_index_contract': is_index,
+                    'currency': 'CNY'
+                }
+        
+        # 兜底处理
         normalized_symbol = self._normalize_symbol(symbol)
-        
-        # 获取交易所信息
-        exchange = normalized_symbol.split('.')[0] if '.' in normalized_symbol else 'UNKNOWN'
-        
-        exchange_names = {
-            'SHFE': '上海期货交易所',
-            'DCE': '大连商品交易所', 
-            'CZCE': '郑州商品交易所',
-            'CFFEX': '中国金融期货交易所',
-            'INE': '上海国际能源交易中心',
-            'GFEX': '广州期货交易所'
-        }
+        underlying = self._extract_underlying(symbol)
         
         return {
             'symbol': normalized_symbol,
             'underlying': underlying,
-            'name': self.futures_names.get(underlying, f'期货{underlying}'),
-            'exchange': exchange,
-            'exchange_name': exchange_names.get(exchange, '未知交易所'),
+            'name': self.get_futures_name(symbol),
+            'exchange': normalized_symbol.split('.')[0] if '.' in normalized_symbol else 'UNKNOWN',
+            'exchange_name': '未知交易所',
             'is_futures': True,
             'is_index_contract': True,
             'currency': 'CNY'

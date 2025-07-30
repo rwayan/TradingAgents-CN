@@ -19,6 +19,9 @@ warnings.filterwarnings('ignore')
 from tradingagents.utils.logging_init import setup_dataflow_logging
 logger = setup_dataflow_logging()
 
+# 导入期货合约管理器
+from .futures_contract_manager import get_contract_manager
+
 
 class ChinaDataSource(Enum):
     """中国股票数据源枚举"""
@@ -50,6 +53,9 @@ class DataSourceManager:
         self.default_futures_source = self._get_default_futures_source()
         self.available_futures_sources = self._check_available_futures_sources()
         self.current_futures_source = self.default_futures_source
+        
+        # 初始化期货合约管理器
+        self.contract_manager = get_contract_manager()
 
         logger.info(f"📊 数据源管理器初始化完成")
         logger.info(f"   默认股票数据源: {self.default_source.value}")
@@ -841,45 +847,11 @@ class DataSourceManager:
             bool: 是否为期货代码
         """
         try:
-            # 检查天勤适配器是否可用
-            if FuturesDataSource.TQSDK in self.available_futures_sources:
-                from .tqsdk_futures_adapter import get_tqsdk_futures_adapter
-                adapter = get_tqsdk_futures_adapter()
-                return adapter.is_futures_symbol(symbol)
-            
-            # 备用检查方法
-            symbol = symbol.upper()
-            futures_codes = [
-                # 股指期货
-                'IF', 'IH', 'IC', 'IM',
-                # 国债期货  
-                'T', 'TF', 'TS',
-                # 商品期货 - 上期所
-                'CU', 'AL', 'ZN', 'PB', 'NI', 'SN', 'AU', 'AG', 'RB', 'HC', 'SS', 'FU', 'BU', 'RU',
-                # 商品期货 - 大商所
-                'C', 'CS', 'A', 'B', 'M', 'Y', 'P', 'J', 'JM', 'I', 'JD', 'L', 'V', 'PP',
-                # 商品期货 - 郑商所
-                'CF', 'SR', 'TA', 'OI', 'MA', 'ZC', 'FG', 'RM', 'AP', 'CJ', 'UR', 'SA', 'PF',
-                # 能源期货 - INE
-                'SC', 'LU', 'BC',
-                # 广期所
-                'SI', 'LC'
-            ]
-            
-            # 提取品种代码
-            if symbol.endswith('99'):
-                underlying = symbol[:-2]
-            elif len(symbol) > 2 and symbol[-2:].isdigit():
-                underlying = symbol[:-2]
-            elif len(symbol) > 4 and symbol[-4:].isdigit():
-                underlying = symbol[:-4]
-            else:
-                underlying = symbol
-                
-            return underlying in futures_codes
-            
+            # 使用合约管理器进行验证
+            is_valid, error_msg, contract_info = self.contract_manager.validate_futures_input(symbol)
+            return is_valid
         except Exception as e:
-            logger.error(f"❌ 判断期货代码失败: {e}")
+            logger.warning(f"⚠️ 期货代码验证失败: {e}")
             return False
 
     def get_futures_data(self, symbol: str, start_date: str, end_date: str) -> str:
@@ -1039,17 +1011,30 @@ class DataSourceManager:
             str: 搜索结果
         """
         try:
-            # 优先使用天勤搜索
-            if FuturesDataSource.TQSDK in self.available_futures_sources:
-                from .tqsdk_futures_adapter import get_tqsdk_futures_adapter
-                adapter = get_tqsdk_futures_adapter()
-                return adapter.search_futures(keyword)
-            else:
-                return f"❌ 期货数据源不可用，无法搜索期货品种"
+            # 使用合约管理器搜索
+            contracts = self.contract_manager.search_contracts(keyword)
+            
+            if not contracts:
+                return f"未找到与'{keyword}'相关的期货品种"
+            
+            # 格式化搜索结果
+            result_lines = [f"🔍 找到 {len(contracts)} 个匹配的期货品种：\n"]
+            
+            for contract in contracts[:10]:  # 限制显示前10个结果
+                result_lines.append(
+                    f"• {contract.symbol} - {contract.name} "
+                    f"({contract.exchange.value}) "
+                    f"[指数合约: {contract.index_code}]"
+                )
+            
+            if len(contracts) > 10:
+                result_lines.append(f"\n... 还有 {len(contracts) - 10} 个结果")
+            
+            return "\n".join(result_lines)
                 
         except Exception as e:
             logger.error(f"❌ 搜索期货品种失败: {e}")
-            return f"❌ 搜索期货品种失败: {str(e)}"
+            return f"❌ 搜索失败: {str(e)}"
 
     def get_futures_info(self, symbol: str) -> Dict[str, Any]:
         """
@@ -1062,18 +1047,19 @@ class DataSourceManager:
             Dict: 期货基本信息
         """
         try:
-            # 优先使用天勤获取期货信息
-            if FuturesDataSource.TQSDK in self.available_futures_sources:
-                from .tqsdk_futures_adapter import get_tqsdk_futures_adapter
-                adapter = get_tqsdk_futures_adapter()
-                return adapter.get_futures_info(symbol)
+            # 使用合约管理器获取期货信息
+            is_valid, error_msg, contract_info = self.contract_manager.validate_futures_input(symbol)
+            
+            if is_valid and contract_info:
+                return contract_info
             else:
                 # 备用方案：返回基本信息
                 return {
                     'symbol': symbol,
                     'name': f'期货{symbol}',
                     'is_futures': True,
-                    'source': 'fallback'
+                    'source': 'fallback',
+                    'error': error_msg if error_msg else '未知期货品种'
                 }
                 
         except Exception as e:
