@@ -28,6 +28,12 @@ class ChinaDataSource(Enum):
     TDX = "tdx"  # 中国股票数据，将被逐步淘汰
 
 
+class FuturesDataSource(Enum):
+    """期货数据源枚举"""
+    TQSDK = "tqsdk"      # 天勤数据（主要期货数据源）
+    AKSHARE = "akshare"  # AKShare期货数据（备用）
+
+
 
 
 
@@ -39,10 +45,52 @@ class DataSourceManager:
         self.default_source = self._get_default_source()
         self.available_sources = self._check_available_sources()
         self.current_source = self.default_source
+        
+        # 期货数据源配置
+        self.default_futures_source = self._get_default_futures_source()
+        self.available_futures_sources = self._check_available_futures_sources()
+        self.current_futures_source = self.default_futures_source
 
         logger.info(f"📊 数据源管理器初始化完成")
-        logger.info(f"   默认数据源: {self.default_source.value}")
-        logger.info(f"   可用数据源: {[s.value for s in self.available_sources]}")
+        logger.info(f"   默认股票数据源: {self.default_source.value}")
+        logger.info(f"   可用股票数据源: {[s.value for s in self.available_sources]}")
+        logger.info(f"   默认期货数据源: {self.default_futures_source.value}")
+        logger.info(f"   可用期货数据源: {[s.value for s in self.available_futures_sources]}")
+
+    def _get_default_futures_source(self) -> FuturesDataSource:
+        """获取默认期货数据源"""
+        # 从环境变量获取，默认使用天勤作为第一优先级期货数据源
+        env_source = os.getenv('DEFAULT_FUTURES_DATA_SOURCE', 'tqsdk').lower()
+
+        # 映射到枚举
+        source_mapping = {
+            'tqsdk': FuturesDataSource.TQSDK,
+            'akshare': FuturesDataSource.AKSHARE,
+        }
+
+        return source_mapping.get(env_source, FuturesDataSource.TQSDK)
+
+    def _check_available_futures_sources(self) -> List[FuturesDataSource]:
+        """检查可用的期货数据源"""
+        available = []
+        
+        # 检查天勤SDK
+        try:
+            import tqsdk
+            available.append(FuturesDataSource.TQSDK)
+            logger.info("✅ 天勤期货数据源可用")
+        except ImportError:
+            logger.warning("⚠️ 天勤期货数据源不可用: TqSdk库未安装")
+        
+        # 检查AKShare（期货功能）
+        try:
+            import akshare as ak
+            available.append(FuturesDataSource.AKSHARE)
+            logger.info("✅ AKShare期货数据源可用")
+        except ImportError:
+            logger.warning("⚠️ AKShare期货数据源不可用: 库未安装")
+        
+        return available
 
     def _get_default_source(self) -> ChinaDataSource:
         """获取默认数据源"""
@@ -780,6 +828,274 @@ class DataSourceManager:
             logger.error(f"⚠️ 解析股票信息失败: {e}")
             return {'symbol': symbol, 'name': f'股票{symbol}', 'source': self.current_source.value}
 
+    # ==================== 期货数据接口 ====================
+
+    def is_futures_symbol(self, symbol: str) -> bool:
+        """
+        判断是否为期货代码
+        
+        Args:
+            symbol: 待检查的代码
+            
+        Returns:
+            bool: 是否为期货代码
+        """
+        try:
+            # 检查天勤适配器是否可用
+            if FuturesDataSource.TQSDK in self.available_futures_sources:
+                from .tqsdk_futures_adapter import get_tqsdk_futures_adapter
+                adapter = get_tqsdk_futures_adapter()
+                return adapter.is_futures_symbol(symbol)
+            
+            # 备用检查方法
+            symbol = symbol.upper()
+            futures_codes = [
+                # 股指期货
+                'IF', 'IH', 'IC', 'IM',
+                # 国债期货  
+                'T', 'TF', 'TS',
+                # 商品期货 - 上期所
+                'CU', 'AL', 'ZN', 'PB', 'NI', 'SN', 'AU', 'AG', 'RB', 'HC', 'SS', 'FU', 'BU', 'RU',
+                # 商品期货 - 大商所
+                'C', 'CS', 'A', 'B', 'M', 'Y', 'P', 'J', 'JM', 'I', 'JD', 'L', 'V', 'PP',
+                # 商品期货 - 郑商所
+                'CF', 'SR', 'TA', 'OI', 'MA', 'ZC', 'FG', 'RM', 'AP', 'CJ', 'UR', 'SA', 'PF',
+                # 能源期货 - INE
+                'SC', 'LU', 'BC',
+                # 广期所
+                'SI', 'LC'
+            ]
+            
+            # 提取品种代码
+            if symbol.endswith('99'):
+                underlying = symbol[:-2]
+            elif len(symbol) > 2 and symbol[-2:].isdigit():
+                underlying = symbol[:-2]
+            elif len(symbol) > 4 and symbol[-4:].isdigit():
+                underlying = symbol[:-4]
+            else:
+                underlying = symbol
+                
+            return underlying in futures_codes
+            
+        except Exception as e:
+            logger.error(f"❌ 判断期货代码失败: {e}")
+            return False
+
+    def get_futures_data(self, symbol: str, start_date: str, end_date: str) -> str:
+        """
+        获取期货数据的统一接口
+        
+        Args:
+            symbol: 期货代码
+            start_date: 开始日期
+            end_date: 结束日期
+            
+        Returns:
+            str: 格式化的期货数据
+        """
+        logger.info(f"📊 [期货数据获取] 开始获取期货数据",
+                   extra={
+                       'symbol': symbol,
+                       'start_date': start_date,
+                       'end_date': end_date,
+                       'data_source': self.current_futures_source.value,
+                       'event_type': 'futures_data_fetch_start'
+                   })
+        
+        start_time = time.time()
+        
+        try:
+            # 根据当前期货数据源调用相应的方法
+            if self.current_futures_source == FuturesDataSource.TQSDK:
+                result = self._get_tqsdk_futures_data(symbol, start_date, end_date)
+            elif self.current_futures_source == FuturesDataSource.AKSHARE:
+                result = self._get_akshare_futures_data(symbol, start_date, end_date)
+            else:
+                result = f"❌ 不支持的期货数据源: {self.current_futures_source.value}"
+            
+            duration = time.time() - start_time
+            result_length = len(result) if result else 0
+            is_success = result and "❌" not in result and "错误" not in result
+            
+            if is_success:
+                logger.info(f"✅ [期货数据获取] 成功获取期货数据",
+                           extra={
+                               'symbol': symbol,
+                               'start_date': start_date,
+                               'end_date': end_date,
+                               'data_source': self.current_futures_source.value,
+                               'duration': duration,
+                               'result_length': result_length,
+                               'event_type': 'futures_data_fetch_success'
+                           })
+                return result
+            else:
+                logger.warning(f"⚠️ [期货数据获取] 数据质量异常，尝试降级到其他数据源")
+                # 尝试备用期货数据源
+                fallback_result = self._try_fallback_futures_sources(symbol, start_date, end_date)
+                if fallback_result and "❌" not in fallback_result:
+                    logger.info(f"✅ [期货数据获取] 降级成功获取数据")
+                    return fallback_result
+                else:
+                    logger.error(f"❌ [期货数据获取] 所有期货数据源都无法获取有效数据")
+                    return result
+                    
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(f"❌ [期货数据获取] 异常失败: {e}",
+                        extra={
+                            'symbol': symbol,
+                            'start_date': start_date,
+                            'end_date': end_date,
+                            'data_source': self.current_futures_source.value,
+                            'duration': duration,
+                            'error': str(e),
+                            'event_type': 'futures_data_fetch_exception'
+                        }, exc_info=True)
+            return self._try_fallback_futures_sources(symbol, start_date, end_date)
+
+    def _get_tqsdk_futures_data(self, symbol: str, start_date: str, end_date: str) -> str:
+        """使用天勤获取期货数据"""
+        logger.debug(f"📊 [天勤期货] 调用参数: symbol={symbol}, start_date={start_date}, end_date={end_date}")
+        
+        start_time = time.time()
+        try:
+            from .tqsdk_futures_adapter import get_tqsdk_futures_adapter
+            adapter = get_tqsdk_futures_adapter()
+            result = adapter.get_futures_data(symbol, start_date, end_date)
+            
+            duration = time.time() - start_time
+            logger.debug(f"📊 [天勤期货] 调用完成: 耗时={duration:.2f}s, 结果长度={len(result) if result else 0}")
+            return result
+            
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(f"❌ [天勤期货] 调用失败: {e}, 耗时={duration:.2f}s", exc_info=True)
+            return f"❌ 天勤获取{symbol}期货数据失败: {e}"
+
+    def _get_akshare_futures_data(self, symbol: str, start_date: str, end_date: str) -> str:
+        """使用AKShare获取期货数据"""
+        logger.debug(f"📊 [AKShare期货] 调用参数: symbol={symbol}, start_date={start_date}, end_date={end_date}")
+        
+        start_time = time.time()
+        try:
+            # 这里需要实现AKShare期货数据获取
+            # 可以参考现有的akshare_utils实现
+            result = f"AKShare期货数据获取功能待实现: {symbol}"
+            
+            duration = time.time() - start_time
+            logger.debug(f"📊 [AKShare期货] 调用完成: 耗时={duration:.2f}s")
+            return result
+            
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(f"❌ [AKShare期货] 调用失败: {e}, 耗时={duration:.2f}s", exc_info=True)
+            return f"❌ AKShare获取{symbol}期货数据失败: {e}"
+
+    def _try_fallback_futures_sources(self, symbol: str, start_date: str, end_date: str) -> str:
+        """尝试备用期货数据源"""
+        logger.error(f"🔄 {self.current_futures_source.value}失败，尝试备用期货数据源...")
+        
+        # 备用期货数据源优先级: 天勤 > AKShare
+        fallback_order = [
+            FuturesDataSource.TQSDK,
+            FuturesDataSource.AKSHARE
+        ]
+        
+        for source in fallback_order:
+            if source != self.current_futures_source and source in self.available_futures_sources:
+                try:
+                    logger.info(f"🔄 尝试备用期货数据源: {source.value}")
+                    
+                    if source == FuturesDataSource.TQSDK:
+                        result = self._get_tqsdk_futures_data(symbol, start_date, end_date)
+                    elif source == FuturesDataSource.AKSHARE:
+                        result = self._get_akshare_futures_data(symbol, start_date, end_date)
+                    else:
+                        logger.warning(f"⚠️ 未知期货数据源: {source.value}")
+                        continue
+                    
+                    if "❌" not in result:
+                        logger.info(f"✅ 备用期货数据源{source.value}获取成功")
+                        return result
+                    else:
+                        logger.warning(f"⚠️ 备用期货数据源{source.value}返回错误结果")
+                        
+                except Exception as e:
+                    logger.error(f"❌ 备用期货数据源{source.value}也失败: {e}")
+                    continue
+        
+        return f"❌ 所有期货数据源都无法获取{symbol}的数据"
+
+    def search_futures(self, keyword: str) -> str:
+        """
+        搜索期货品种
+        
+        Args:
+            keyword: 搜索关键词
+            
+        Returns:
+            str: 搜索结果
+        """
+        try:
+            # 优先使用天勤搜索
+            if FuturesDataSource.TQSDK in self.available_futures_sources:
+                from .tqsdk_futures_adapter import get_tqsdk_futures_adapter
+                adapter = get_tqsdk_futures_adapter()
+                return adapter.search_futures(keyword)
+            else:
+                return f"❌ 期货数据源不可用，无法搜索期货品种"
+                
+        except Exception as e:
+            logger.error(f"❌ 搜索期货品种失败: {e}")
+            return f"❌ 搜索期货品种失败: {str(e)}"
+
+    def get_futures_info(self, symbol: str) -> Dict[str, Any]:
+        """
+        获取期货基本信息
+        
+        Args:
+            symbol: 期货代码
+            
+        Returns:
+            Dict: 期货基本信息
+        """
+        try:
+            # 优先使用天勤获取期货信息
+            if FuturesDataSource.TQSDK in self.available_futures_sources:
+                from .tqsdk_futures_adapter import get_tqsdk_futures_adapter
+                adapter = get_tqsdk_futures_adapter()
+                return adapter.get_futures_info(symbol)
+            else:
+                # 备用方案：返回基本信息
+                return {
+                    'symbol': symbol,
+                    'name': f'期货{symbol}',
+                    'is_futures': True,
+                    'source': 'fallback'
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ 获取期货基本信息失败: {e}")
+            return {
+                'symbol': symbol,
+                'name': f'期货{symbol}',
+                'is_futures': True,
+                'source': 'error',
+                'error': str(e)
+            }
+
+    def set_futures_source(self, source: FuturesDataSource) -> bool:
+        """设置当前期货数据源"""
+        if source in self.available_futures_sources:
+            self.current_futures_source = source
+            logger.info(f"✅ 期货数据源已切换到: {source.value}")
+            return True
+        else:
+            logger.error(f"❌ 期货数据源不可用: {source.value}")
+            return False
+
 
 # 全局数据源管理器实例
 _data_source_manager = None
@@ -832,6 +1148,65 @@ def get_china_stock_info_unified(symbol: str) -> Dict:
     """
     manager = get_data_source_manager()
     return manager.get_stock_info(symbol)
+
+
+def get_futures_data_unified(symbol: str, start_date: str, end_date: str) -> str:
+    """
+    统一的期货数据获取接口
+    自动使用配置的期货数据源，支持备用数据源
+    
+    Args:
+        symbol: 期货代码
+        start_date: 开始日期
+        end_date: 结束日期
+        
+    Returns:
+        str: 格式化的期货数据
+    """
+    manager = get_data_source_manager()
+    return manager.get_futures_data(symbol, start_date, end_date)
+
+
+def get_futures_info_unified(symbol: str) -> Dict[str, Any]:
+    """
+    统一的期货信息获取接口
+    
+    Args:
+        symbol: 期货代码
+        
+    Returns:
+        Dict: 期货基本信息
+    """
+    manager = get_data_source_manager()
+    return manager.get_futures_info(symbol)
+
+
+def search_futures_unified(keyword: str) -> str:
+    """
+    统一的期货搜索接口
+    
+    Args:
+        keyword: 搜索关键词
+        
+    Returns:
+        str: 搜索结果
+    """
+    manager = get_data_source_manager()
+    return manager.search_futures(keyword)
+
+
+def is_futures_symbol_unified(symbol: str) -> bool:
+    """
+    统一的期货代码检查接口
+    
+    Args:
+        symbol: 待检查的代码
+        
+    Returns:
+        bool: 是否为期货代码
+    """
+    manager = get_data_source_manager()
+    return manager.is_futures_symbol(symbol)
 
 
 # 全局数据源管理器实例
