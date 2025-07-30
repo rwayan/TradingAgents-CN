@@ -145,6 +145,21 @@ class StockDataPreparer:
                     error_message="美股代码格式错误，应为1-5位字母",
                     suggestion="请输入1-5位字母的美股代码，如：AAPL、TSLA"
                 )
+        elif market_type == "期货":
+            stock_code_upper = stock_code.upper()
+            # 指数合约格式：CU99, IF99 等
+            index_format = re.match(r'^[A-Z]{1,3}99$', stock_code_upper)
+            # 具体合约格式：CU2403, IF2403 等
+            specific_format = re.match(r'^[A-Z]{1,3}\d{4}$', stock_code_upper)
+            
+            if not (index_format or specific_format):
+                return StockDataPreparationResult(
+                    is_valid=False,
+                    stock_code=stock_code,
+                    market_type="期货",
+                    error_message="期货代码格式错误，应为指数合约或具体合约格式",
+                    suggestion="请输入正确的期货代码，如：CU99（指数合约）、CU2403（具体合约）"
+                )
         
         return StockDataPreparationResult(
             is_valid=True,
@@ -163,6 +178,10 @@ class StockDataPreparer:
         # 港股：4-5位数字.HK 或 纯4-5位数字
         if re.match(r'^\d{4,5}\.HK$', stock_code) or re.match(r'^\d{4,5}$', stock_code):
             return "港股"
+        
+        # 期货：指数合约格式（如CU99）或具体合约格式（如CU2403）
+        if re.match(r'^[A-Z]{1,3}99$', stock_code) or re.match(r'^[A-Z]{1,3}\d{4}$', stock_code):
+            return "期货"
         
         # 美股：1-5位字母
         if re.match(r'^[A-Z]{1,5}$', stock_code):
@@ -271,13 +290,15 @@ class StockDataPreparer:
                 return self._prepare_hk_stock_data(stock_code, period_days, analysis_date)
             elif market_type == "美股":
                 return self._prepare_us_stock_data(stock_code, period_days, analysis_date)
+            elif market_type == "期货":
+                return self._prepare_futures_data(stock_code, period_days, analysis_date)
             else:
                 return StockDataPreparationResult(
                     is_valid=False,
                     stock_code=stock_code,
                     market_type=market_type,
                     error_message=f"不支持的市场类型: {market_type}",
-                    suggestion="请选择支持的市场类型：A股、港股、美股"
+                    suggestion="请选择支持的市场类型：A股、港股、美股、期货"
                 )
         except Exception as e:
             logger.error(f"❌ [数据准备] 数据准备异常: {e}")
@@ -673,6 +694,105 @@ class StockDataPreparer:
                 is_valid=False,
                 stock_code=formatted_code,
                 market_type="美股",
+                error_message=f"数据准备失败: {str(e)}",
+                suggestion="请检查网络连接或数据源配置"
+            )
+
+    def _prepare_futures_data(self, stock_code: str, period_days: int,
+                             analysis_date: str) -> StockDataPreparationResult:
+        """预获取期货数据"""
+        logger.info(f"📊 [期货数据] 开始准备{stock_code}的数据 (时长: {period_days}天)")
+
+        # 标准化期货代码格式
+        formatted_code = stock_code.upper()
+
+        # 计算日期范围
+        end_date = datetime.strptime(analysis_date, '%Y-%m-%d')
+        start_date = end_date - timedelta(days=period_days)
+        start_date_str = start_date.strftime('%Y-%m-%d')
+        end_date_str = end_date.strftime('%Y-%m-%d')
+
+        has_historical_data = False
+        has_basic_info = False
+        stock_name = formatted_code  # 期货使用代码作为名称
+        cache_status = ""
+
+        try:
+            # 期货通常通过历史数据验证是否存在
+            logger.debug(f"📊 [期货数据] 获取{formatted_code}历史数据 ({start_date_str} 到 {end_date_str})...")
+            
+            # 尝试获取期货数据 - 使用期货数据接口
+            try:
+                from tradingagents.dataflows.futures_data import get_futures_data_unified
+                historical_data = get_futures_data_unified(formatted_code, start_date_str, end_date_str)
+            except ImportError:
+                # 如果期货数据模块不存在，返回相应错误
+                logger.warning(f"⚠️ [期货数据] 期货数据模块未找到")
+                return StockDataPreparationResult(
+                    is_valid=False,
+                    stock_code=formatted_code,
+                    market_type="期货",
+                    error_message=f"期货数据模块未配置",
+                    suggestion="请确保已正确配置期货数据获取模块"
+                )
+
+            if historical_data and "❌" not in historical_data and "错误" not in historical_data and "无法获取" not in historical_data:
+                # 数据有效性检查
+                data_indicators = [
+                    "开盘价", "收盘价", "最高价", "最低价", "成交量", "持仓量",
+                    "Open", "Close", "High", "Low", "Volume", "OI",
+                    "日期", "Date", "时间", "Time"
+                ]
+
+                has_valid_data = (
+                    len(historical_data) > 50 and  # 数据长度检查
+                    any(indicator in historical_data for indicator in data_indicators)
+                )
+
+                if has_valid_data:
+                    has_historical_data = True
+                    has_basic_info = True  # 期货通常不单独获取基本信息
+                    logger.info(f"✅ [期货数据] 历史数据获取成功: {formatted_code} ({period_days}天)")
+                    cache_status = f"历史数据已缓存({period_days}天)"
+
+                    # 数据准备成功
+                    logger.info(f"🎉 [期货数据] 数据准备完成: {formatted_code}")
+                    return StockDataPreparationResult(
+                        is_valid=True,
+                        stock_code=formatted_code,
+                        market_type="期货",
+                        stock_name=stock_name,
+                        has_historical_data=has_historical_data,
+                        has_basic_info=has_basic_info,
+                        data_period_days=period_days,
+                        cache_status=cache_status
+                    )
+                else:
+                    logger.warning(f"⚠️ [期货数据] 历史数据无效: {formatted_code}")
+                    logger.debug(f"🔍 [期货数据] 数据内容预览: {historical_data[:200]}...")
+                    return StockDataPreparationResult(
+                        is_valid=False,
+                        stock_code=formatted_code,
+                        market_type="期货",
+                        error_message=f"期货 {formatted_code} 的历史数据无效或不足",
+                        suggestion="该期货合约可能不存在或数据源暂时不可用，请稍后重试"
+                    )
+            else:
+                logger.warning(f"⚠️ [期货数据] 无法获取历史数据: {formatted_code}")
+                return StockDataPreparationResult(
+                    is_valid=False,
+                    stock_code=formatted_code,
+                    market_type="期货",
+                    error_message=f"期货代码 {formatted_code} 不存在或无法获取数据",
+                    suggestion="请检查期货代码是否正确，如：CU99、IF99、RB99"
+                )
+
+        except Exception as e:
+            logger.error(f"❌ [期货数据] 数据准备失败: {e}")
+            return StockDataPreparationResult(
+                is_valid=False,
+                stock_code=formatted_code,
+                market_type="期货",
                 error_message=f"数据准备失败: {str(e)}",
                 suggestion="请检查网络连接或数据源配置"
             )

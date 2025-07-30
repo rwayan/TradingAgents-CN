@@ -51,6 +51,10 @@ tests/
 - `test_format_fix.py` - 格式化修复测试
 - `test_progress.py` - 进度跟踪测试
 
+### 📈 期货市场测试
+- `test_futures_data_validation.py` - 期货代码验证和数据准备测试
+- `test_futures_contract_manager.py` - 期货合约管理器功能测试
+
 ## 运行测试
 
 ### 运行所有测试
@@ -84,6 +88,10 @@ python tests/test_tdx_integration.py
 # Redis性能测试
 python tests/quick_redis_test.py
 python tests/test_redis_performance.py
+
+# 期货市场功能测试
+python tests/test_futures_data_validation.py
+python tests/test_futures_contract_manager.py
 ```
 
 ### 诊断工具
