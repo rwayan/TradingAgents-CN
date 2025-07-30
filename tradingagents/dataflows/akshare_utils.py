@@ -78,13 +78,13 @@ class AKShareProvider:
             else:
                 symbol = symbol.replace('.SZ', '').replace('.SS', '')
             
-            # 获取数据
+            # 获取数据（使用前复权）
             data = self.ak.stock_zh_a_hist(
                 symbol=symbol,
                 period="daily",
                 start_date=start_date.replace('-', '') if start_date else "20240101",
                 end_date=end_date.replace('-', '') if end_date else "20241231",
-                adjust=""
+                adjust="qfq"  # 前复权：保持当前价格不变，调整历史价格
             )
             
             return data
@@ -155,7 +155,7 @@ class AKShareProvider:
                         period="daily",
                         start_date=start_date_formatted,
                         end_date=end_date_formatted,
-                        adjust=""
+                        adjust="qfq"  # 港股前复权：保持当前价格不变，调整历史价格
                     )
                 except Exception as e:
                     exception[0] = e

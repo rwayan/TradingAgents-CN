@@ -27,7 +27,7 @@ def test_akshare_direct():
         
         # 测试获取股票数据
         print("📈 测试获取招商银行(000001)数据...")
-        data = ak.stock_zh_a_hist(symbol="000001", period="daily", start_date="20241201", end_date="20241210", adjust="")
+        data = ak.stock_zh_a_hist(symbol="000001", period="daily", start_date="20241201", end_date="20241210", adjust="qfq")
         print(f"✅ 获取到{len(data)}条数据")
         print(f"   最新收盘价: {data.iloc[-1]['收盘']}")
         

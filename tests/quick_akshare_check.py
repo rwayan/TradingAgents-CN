@@ -54,7 +54,7 @@ def test_basic_akshare():
         
         # 测试获取股票数据
         print("📈 测试获取股票数据...")
-        data = ak.stock_zh_a_hist(symbol="000001", period="daily", start_date="20241201", end_date="20241210", adjust="")
+        data = ak.stock_zh_a_hist(symbol="000001", period="daily", start_date="20241201", end_date="20241210", adjust="qfq")
         print(f"✅ 获取到{len(data)}条数据")
         
         return True

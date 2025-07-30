@@ -110,7 +110,7 @@ def test_akshare_basic_functionality():
         
         # 测试获取股票历史数据
         print("\n📈 测试获取股票历史数据...")
-        stock_data = ak.stock_zh_a_hist(symbol="000001", period="daily", start_date="20241201", end_date="20241210", adjust="")
+        stock_data = ak.stock_zh_a_hist(symbol="000001", period="daily", start_date="20241201", end_date="20241210", adjust="qfq")
         if stock_data is not None and not stock_data.empty:
             print(f"✅ 获取股票数据成功，共{len(stock_data)}条记录")
             print(f"   最新数据: {stock_data.tail(1).to_dict('records')}")
@@ -228,7 +228,7 @@ class AKShareProvider:
                 period="daily",
                 start_date=start_date.replace('-', '') if start_date else "20240101",
                 end_date=end_date.replace('-', '') if end_date else "20241231",
-                adjust=""
+                adjust="qfq"  # 前复权：保持当前价格不变，调整历史价格
             )
             
             return data
