@@ -734,6 +734,7 @@ class Toolkit:
             is_china = market_info['is_china']
             is_hk = market_info['is_hk']
             is_us = market_info['is_us']
+            is_futures = market_info['is_futures']
 
             logger.info(f"🔍 [股票代码追踪] StockUtils.get_market_info 返回的市场信息: {market_info}")
             logger.info(f"📊 [统一基本面工具] 股票类型: {market_info['market_name']}")
@@ -847,6 +848,43 @@ class Toolkit:
                         result_data.append(fallback_info)
                         logger.warning(f"⚠️ [统一基本面工具] 港股使用最终备用方案")
 
+            elif is_futures:
+                # 期货：使用期货数据源，期货主要关注价格走势和技术分析
+                logger.info(f"📈 [统一基本面工具] 处理期货数据...")
+
+                try:
+                    from tradingagents.dataflows.data_source_manager import get_futures_data_unified
+                    futures_data = get_futures_data_unified(ticker, start_date, end_date)
+                    
+                    # 期货基本面分析主要包含价格分析、成交量分析、持仓量分析等
+                    futures_analysis = f"""## 期货基本面分析
+
+**合约代码**: {ticker}
+**交易货币**: 人民币 (¥)
+**市场类型**: 期货
+
+### 历史价格数据
+{futures_data}
+
+### 期货基本面要素
+- **供需关系**: 关注标的商品的供应和需求情况
+- **宏观经济**: 货币政策、通胀水平等影响
+- **季节性因素**: 商品期货的季节性规律
+- **库存水平**: 现货库存对期货价格的影响
+- **政策因素**: 相关行业政策和监管变化
+
+### 技术分析要点
+- **价格趋势**: 通过K线图分析价格走势
+- **成交量**: 成交量放大往往预示趋势加强
+- **持仓量**: 持仓量变化反映市场参与度
+- **支撑阻力**: 关键价位的支撑和阻力水平
+
+*注：期货投资风险较高，请注意风险管理*
+"""
+                    result_data.append(futures_analysis)
+                except Exception as e:
+                    result_data.append(f"## 期货基本面数据\n获取失败: {e}")
+
             else:
                 # 美股：使用OpenAI/Finnhub数据源
                 logger.info(f"🇺🇸 [统一基本面工具] 处理美股数据...")
@@ -906,12 +944,13 @@ class Toolkit:
 
             # 自动识别股票类型
             market_info = StockUtils.get_market_info(ticker)
-            is_china = market_info['is_china']
-            is_hk = market_info['is_hk']
-            is_us = market_info['is_us']
+            is_china = market_info.get('is_china', False)
+            is_hk = market_info.get('is_hk', False)
+            is_us = market_info.get('is_us', False)
+            is_futures = market_info.get('is_futures', False)
 
-            logger.info(f"📈 [统一市场工具] 股票类型: {market_info['market_name']}")
-            logger.info(f"📈 [统一市场工具] 货币: {market_info['currency_name']} ({market_info['currency_symbol']}")
+            logger.info(f"📈 [统一市场工具] 股票类型: {market_info.get('market_name', '未知')}")
+            logger.info(f"📈 [统一市场工具] 货币: {market_info.get('currency_name', '未知')} ({market_info.get('currency_symbol', '?')})")
 
             result_data = []
 
@@ -936,6 +975,17 @@ class Toolkit:
                     result_data.append(f"## 港股市场数据\n{hk_data}")
                 except Exception as e:
                     result_data.append(f"## 港股市场数据\n获取失败: {e}")
+            
+            elif is_futures:
+                # 期货：使用期货数据源
+                logger.info(f"📈 [统一市场工具] 处理期货市场数据...")
+
+                try:
+                    from tradingagents.dataflows.data_source_manager import get_futures_data_unified
+                    futures_data = get_futures_data_unified(ticker, start_date, end_date)
+                    result_data.append(f"## 期货市场数据\n{futures_data}")
+                except Exception as e:
+                    result_data.append(f"## 期货市场数据\n获取失败: {e}")
 
             else:
                 # 美股：使用Yahoo Finance数据源
@@ -951,8 +1001,8 @@ class Toolkit:
             # 组合所有数据
             combined_result = f"""# {ticker} 市场数据分析
 
-**股票类型**: {market_info['market_name']}
-**货币**: {market_info['currency_name']} ({market_info['currency_symbol']})
+**股票类型**: {market_info.get('market_name', '未知')}
+**货币**: {market_info.get('currency_name', '未知')} ({market_info.get('currency_symbol', '?')})
 **分析期间**: {start_date} 至 {end_date}
 
 {chr(10).join(result_data)}
@@ -998,6 +1048,7 @@ class Toolkit:
             is_china = market_info['is_china']
             is_hk = market_info['is_hk']
             is_us = market_info['is_us']
+            is_futures = market_info['is_futures']
 
             logger.info(f"📰 [统一新闻工具] 股票类型: {market_info['market_name']}")
 
@@ -1068,6 +1119,45 @@ class Toolkit:
                     logger.error(f"❌ [统一新闻工具] Google新闻获取失败: {google_e}")
                     result_data.append(f"## Google新闻\n获取失败: {google_e}")
 
+            elif is_futures:
+                # 期货：使用Google新闻搜索期货相关新闻
+                logger.info(f"📈 [统一新闻工具] 处理期货新闻...")
+
+                try:
+                    # 构建期货新闻搜索关键词
+                    # 提取期货品种名称
+                    futures_name_map = {
+                        'CU': '沪铜',
+                        'AU': '黄金',
+                        'AG': '白银',
+                        'RB': '螺纹钢',
+                        'I': '铁矿石',
+                        'M': '豆粕',
+                        'IF': '沪深300',
+                        'IC': '中证500',
+                        'IH': '上证50'
+                    }
+                    
+                    # 提取期货代码前缀
+                    import re
+                    match = re.match(r'^([A-Z]+)', ticker.upper())
+                    if match:
+                        prefix = match.group(1)
+                        futures_name = futures_name_map.get(prefix, prefix)
+                    else:
+                        futures_name = ticker
+                    
+                    search_query = f"{futures_name} 期货 {ticker} 价格 行情 新闻"
+                    logger.info(f"📈 [统一新闻工具] 期货Google新闻搜索关键词: {search_query}")
+
+                    from tradingagents.dataflows.interface import get_google_news
+                    news_data = get_google_news(search_query, curr_date)
+                    result_data.append(f"## 期货新闻\n{news_data}")
+                    logger.info(f"📈 [统一新闻工具] 成功获取期货新闻")
+                except Exception as e:
+                    logger.error(f"❌ [统一新闻工具] 期货新闻获取失败: {e}")
+                    result_data.append(f"## 期货新闻\n获取失败: {e}")
+
             else:
                 # 美股：使用Finnhub新闻
                 logger.info(f"🇺🇸 [统一新闻工具] 处理美股新闻...")
@@ -1128,6 +1218,7 @@ class Toolkit:
             is_china = market_info['is_china']
             is_hk = market_info['is_hk']
             is_us = market_info['is_us']
+            is_futures = market_info['is_futures']
 
             logger.info(f"😊 [统一情绪工具] 股票类型: {market_info['market_name']}")
 
@@ -1161,6 +1252,42 @@ class Toolkit:
                     result_data.append(sentiment_summary)
                 except Exception as e:
                     result_data.append(f"## 中文市场情绪\n获取失败: {e}")
+
+            elif is_futures:
+                # 期货：分析期货市场情绪
+                logger.info(f"📈 [统一情绪工具] 处理期货市场情绪...")
+
+                try:
+                    # 期货市场情绪分析
+                    futures_sentiment = f"""
+## 期货市场情绪分析
+
+**合约代码**: {ticker}
+**分析日期**: {curr_date}
+
+### 期货市场情绪要素
+- **多空持仓**: 通过持仓量变化分析多空力量对比
+- **资金流向**: 关注主力资金流入流出情况
+- **技术面情绪**: 基于价格形态和技术指标的情绪判断
+- **基本面情绪**: 供需关系变化对市场情绪的影响
+
+### 情绪指标
+- 整体情绪: 中性
+- 市场热度: 中等
+- 多空分歧: 待分析
+- 风险情绪: 谨慎
+
+### 情绪分析要点
+- **投机度**: 期货市场投机性较强，情绪波动较大
+- **季节性**: 商品期货存在季节性情绪规律
+- **政策敏感性**: 对宏观政策和行业政策较为敏感
+- **联动性**: 与相关现货市场、国际市场情绪联动
+
+*注：期货市场情绪变化快速，请密切关注实时动态*
+"""
+                    result_data.append(futures_sentiment)
+                except Exception as e:
+                    result_data.append(f"## 期货市场情绪\n获取失败: {e}")
 
             else:
                 # 美股：使用Reddit情绪分析

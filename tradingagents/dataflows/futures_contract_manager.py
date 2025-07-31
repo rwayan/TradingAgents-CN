@@ -60,7 +60,7 @@ class FuturesContractManager:
         # 上海期货交易所 (SHFE)
         shfe_contracts = [
             FuturesContract("CU", "沪铜", FuturesExchange.SHFE, FuturesCategory.METALS, 
-                          "CU99", "SHFE.CU99", 5, 10, 0.07, "5吨/手", "1-12月"),
+                          "CU99", "KQ.i@SHFE.cu", 5, 10, 0.07, "5吨/手", "1-12月"),
             FuturesContract("AL", "沪铝", FuturesExchange.SHFE, FuturesCategory.METALS,
                           "AL99", "SHFE.AL99", 5, 5, 0.07, "5吨/手", "1-12月"),
             FuturesContract("ZN", "沪锌", FuturesExchange.SHFE, FuturesCategory.METALS,

@@ -17,6 +17,7 @@ class StockMarket(Enum):
     CHINA_A = "china_a"      # 中国A股
     HONG_KONG = "hong_kong"  # 港股
     US = "us"                # 美股
+    FUTURES = "futures"      # 期货
     UNKNOWN = "unknown"      # 未知
 
 
@@ -46,6 +47,10 @@ class StockUtils:
         # 港股：4-5位数字.HK（支持0700.HK和09988.HK格式）
         if re.match(r'^\d{4,5}\.HK$', ticker):
             return StockMarket.HONG_KONG
+
+        # 期货：2-3位字母+4位数字（如CU2510）或2-3位字母+99（如CU99）
+        if re.match(r'^[A-Z]{1,3}\d{4}$', ticker) or re.match(r'^[A-Z]{1,3}99$', ticker):
+            return StockMarket.FUTURES
 
         # 美股：1-5位字母
         if re.match(r'^[A-Z]{1,5}$', ticker):
@@ -93,6 +98,19 @@ class StockUtils:
         return StockUtils.identify_stock_market(ticker) == StockMarket.US
     
     @staticmethod
+    def is_futures(ticker: str) -> bool:
+        """
+        判断是否为期货
+        
+        Args:
+            ticker: 股票代码
+            
+        Returns:
+            bool: 是否为期货
+        """
+        return StockUtils.identify_stock_market(ticker) == StockMarket.FUTURES
+    
+    @staticmethod
     def get_currency_info(ticker: str) -> Tuple[str, str]:
         """
         根据股票代码获取货币信息
@@ -111,6 +129,8 @@ class StockUtils:
             return "港币", "HK$"
         elif market == StockMarket.US:
             return "美元", "$"
+        elif market == StockMarket.FUTURES:
+            return "人民币", "¥"  # 国内期货以人民币计价
         else:
             return "未知", "?"
     
@@ -133,6 +153,8 @@ class StockUtils:
             return "yahoo_finance"  # 港股使用Yahoo Finance
         elif market == StockMarket.US:
             return "yahoo_finance"  # 美股使用Yahoo Finance
+        elif market == StockMarket.FUTURES:
+            return "futures_unified"  # 期货使用统一的期货数据源
         else:
             return "unknown"
     
@@ -181,6 +203,7 @@ class StockUtils:
             StockMarket.CHINA_A: "中国A股",
             StockMarket.HONG_KONG: "港股",
             StockMarket.US: "美股",
+            StockMarket.FUTURES: "期货",
             StockMarket.UNKNOWN: "未知市场"
         }
         
@@ -193,7 +216,8 @@ class StockUtils:
             "data_source": data_source,
             "is_china": market == StockMarket.CHINA_A,
             "is_hk": market == StockMarket.HONG_KONG,
-            "is_us": market == StockMarket.US
+            "is_us": market == StockMarket.US,
+            "is_futures": market == StockMarket.FUTURES
         }
 
 

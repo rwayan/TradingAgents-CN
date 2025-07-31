@@ -373,6 +373,11 @@ def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, ll
                 if formatted_symbol.isdigit():
                     formatted_symbol = f"{formatted_symbol.zfill(4)}.HK"
             update_progress(f"🇭🇰 准备分析港股: {formatted_symbol}")
+        elif market_type == "期货":
+            # 期货代码转为大写
+            formatted_symbol = stock_symbol.upper()
+            logger.debug(f"🔍 [RUNNER DEBUG] 期货代码转大写: '{stock_symbol}' -> '{formatted_symbol}'")
+            update_progress(f"📈 准备分析期货: {formatted_symbol}")
         else:
             # 美股代码转为大写
             formatted_symbol = stock_symbol.upper()
@@ -720,6 +725,10 @@ def generate_demo_results(stock_symbol, analysis_date, analysts, research_depth,
         currency_symbol = "¥"
         price_range = (5, 100)   # A股价格范围
         market_name = "A股"
+    elif market_type == "期货":
+        currency_symbol = "¥"
+        price_range = (0, 500000)  # 期货价格范围
+        market_name = "期货"
     else:  # 美股
         currency_symbol = "$"
         price_range = (50, 300)  # 美股价格范围

@@ -470,9 +470,13 @@ def display_static_progress_with_controls(analysis_id: str, show_refresh_control
     # 获取进度数据
     progress_data = get_progress_by_id(analysis_id)
 
+    # 先初始化status变量，避免UnboundLocalError
+    status = 'running'  # 默认状态
+
     if not progress_data:
         # 如果没有进度数据，显示默认的准备状态
         st.info("🔄 **当前状态**: 准备开始分析...")
+        status = 'running'  # 没有数据时假设正在运行
 
         # 如果需要显示刷新控件，仍然显示
         if show_refresh_controls:

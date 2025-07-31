@@ -25,7 +25,7 @@ warnings.filterwarnings('ignore')
 class TqSdkFuturesAdapter:
     """天勤期货数据适配器"""
     
-    def __init__(self, username: str = None, password: str = None):
+    def __init__(self, username: str = "test", password: str = "test"):
         """
         初始化天勤适配器
         
@@ -33,8 +33,8 @@ class TqSdkFuturesAdapter:
             username: 天勤用户名
             password: 天勤密码
         """
-        self.username = username or os.getenv('TQSDK_USERNAME')
-        self.password = password or os.getenv('TQSDK_PASSWORD')
+        self.username = "username"
+        self.password = "password"
         self.api = None
         self.is_connected = False
         
@@ -51,7 +51,16 @@ class TqSdkFuturesAdapter:
                 
             # 检查是否需要认证
             if self.username and self.password:
-                from tqsdk import TqApi, TqAuth
+                from tqsdk import TqApi
+                # 这里我需要判断tqsdk_utility.py是否存在, 如果存在从中导入TqCustomAuth
+                if os.path.exists('tradingagents/dataflows/tqsdk_utility.py') or os.path.exists('tqsdk_utility.py'):
+                    from .tqsdk_utility import TqCustomAuth as TqAuth
+                    logger.info("🔗 使用自定义TqCustomAuth进行认证...")
+                else:
+                    # 如果不存在，直接使用TqAuth
+                    from tqsdk import TqAuth
+                    logger.warning("⚠️ 未找到tqsdk_utility.py，使用默认TqAuth")
+                # 使用认证方式连接天勤API
                 logger.info(f"🔗 使用认证方式连接天勤API...")
                 auth = TqAuth(self.username, self.password)
                 self.api = TqApi(auth=auth, web_gui=False)
