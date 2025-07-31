@@ -1192,6 +1192,77 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @log_tool_call(tool_name="get_futures_data_unified", log_args=True)
+    def get_futures_data_unified(
+        ticker: Annotated[str, "期货代码（如：CU99、AU2501、IF99等）"],
+        start_date: Annotated[str, "开始日期，格式：YYYY-MM-DD"],
+        end_date: Annotated[str, "结束日期，格式：YYYY-MM-DD"],
+        curr_date: Annotated[str, "当前日期，格式：YYYY-MM-DD"] = None
+    ) -> str:
+        """
+        统一的期货数据获取工具
+        自动使用最优期货数据源（TqSDK、AKShare等）获取期货价格、成交量、持仓量等数据
+        
+        Args:
+            ticker: 期货代码（如：CU99、AU2501、IF99等）
+            start_date: 开始日期（格式：YYYY-MM-DD）
+            end_date: 结束日期（格式：YYYY-MM-DD）
+            curr_date: 当前日期（可选，格式：YYYY-MM-DD）
+            
+        Returns:
+            str: 期货市场数据和技术分析报告
+        """
+        logger.info(f"📈 [统一期货工具] 分析期货: {ticker}")
+        
+        try:
+            from tradingagents.dataflows.data_source_manager import get_futures_data_unified
+            
+            # 调用统一期货数据接口
+            futures_data = get_futures_data_unified(ticker, start_date, end_date)
+            
+            # 构建完整的期货分析报告
+            combined_result = f"""# {ticker} 期货数据分析
+
+**期货代码**: {ticker}
+**交易货币**: 人民币 (¥)
+**分析期间**: {start_date} 至 {end_date}
+
+## 期货市场数据
+{futures_data}
+
+## 期货特有分析要素
+### 技术分析重点
+- **价格趋势**: 通过K线图分析价格走势和趋势方向
+- **成交量**: 成交量放大往往预示价格趋势的确认
+- **持仓量**: 持仓量变化反映市场参与者的积极程度
+- **技术形态**: 识别重要的技术形态和支撑阻力位
+
+### 基本面影响因素
+- **供需关系**: 标的商品的供应和需求平衡状况
+- **宏观经济**: 货币政策、利率水平、通胀预期等
+- **季节性因素**: 商品期货特有的季节性规律
+- **政策影响**: 相关行业政策和监管变化
+- **库存水平**: 现货库存对期货价格的传导作用
+
+### 风险提示
+- 期货交易具有高杠杆特性，风险较大
+- 价格波动可能受多种复杂因素影响
+- 建议严格控制仓位和止损
+
+---
+*数据来源: 统一期货数据源（TqSDK/AKShare等）*
+"""
+            
+            logger.info(f"📈 [统一期货工具] 数据获取完成，总长度: {len(combined_result)}")
+            return combined_result
+            
+        except Exception as e:
+            error_msg = f"统一期货数据工具执行失败: {str(e)}"
+            logger.error(f"❌ [统一期货工具] {error_msg}")
+            return error_msg
+
+    @staticmethod
+    @tool
     @log_tool_call(tool_name="get_stock_sentiment_unified", log_args=True)
     def get_stock_sentiment_unified(
         ticker: Annotated[str, "股票代码（支持A股、港股、美股）"],
