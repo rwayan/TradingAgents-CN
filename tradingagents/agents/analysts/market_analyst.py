@@ -279,6 +279,13 @@ def create_market_analyst(llm, toolkit):
 
         logger.debug(f"📈 [DEBUG] 股票类型检查: {ticker} -> {market_info['market_name']} ({market_info['currency_name']})")
 
+        # 🔄 期货检测：如果是期货代码，切换到期货技术分析师
+        if market_info['is_futures']:
+            logger.info(f"📊 [市场分析师] 检测到期货代码 {ticker}，切换到期货技术分析师")
+            from tradingagents.agents.analysts.futures_technical_analyst import create_futures_technical_analyst
+            futures_analyst_node = create_futures_technical_analyst(llm, toolkit)
+            return futures_analyst_node(state)
+
         # 获取公司名称
         company_name = _get_company_name(ticker, market_info)
         logger.debug(f"📈 [DEBUG] 公司名称: {ticker} -> {company_name}")

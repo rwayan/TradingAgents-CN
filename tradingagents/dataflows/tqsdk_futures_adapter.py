@@ -141,7 +141,7 @@ class TqSdkFuturesAdapter:
         if parsed_symbol:
             contract = self.contract_manager.get_contract(parsed_symbol)
             if contract:
-                return contract.name
+                return contract['name']
         return f'期货{symbol.upper()}'
 
     def _extract_underlying(self, symbol: str) -> str:
@@ -167,18 +167,19 @@ class TqSdkFuturesAdapter:
             contract = self.contract_manager.get_contract(parsed_symbol)
             if contract:
                 return {
-                    'symbol': contract.full_code,
-                    'underlying': contract.symbol,
-                    'name': contract.name,
-                    'exchange': contract.exchange.name,
-                    'exchange_name': contract.exchange.value,
-                    'category': contract.category.value,
-                    'multiplier': contract.multiplier,
-                    'min_change': contract.min_change,
-                    'margin_rate': contract.margin_rate,
-                    'trading_unit': contract.trading_unit,
+                    'symbol': contract['full_code'],
+                    'underlying': contract['symbol'],
+                    'name': contract['name'],
+                    'exchange': contract.get('exchange', 'UNKNOWN'),
+                    'exchange_name': contract.get('exchange_name', '未知交易所'),
+                    'category': contract.get('category', '未知分类'),
+                    'multiplier': contract.get('multiplier', 1),
+                    'min_change': contract.get('min_change', 0.01),
+                    'margin_rate': contract.get('margin_rate', 0.1),
+                    'trading_unit': contract.get('trading_unit', '1手'),
                     'is_futures': True,
-                    'is_index_contract': is_index,
+                    'is_index_contract': contract.get('is_index', False),
+                    'contract_type': contract.get('contract_type', 'UNKNOWN'),
                     'currency': 'CNY'
                 }
         

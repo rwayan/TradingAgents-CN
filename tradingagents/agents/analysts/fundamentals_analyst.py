@@ -107,6 +107,13 @@ def create_fundamentals_analyst(llm, toolkit):
         logger.debug(f"📊 [DEBUG] 详细市场信息: is_china={market_info['is_china']}, is_hk={market_info['is_hk']}, is_us={market_info['is_us']}")
         logger.debug(f"📊 [DEBUG] 工具配置检查: online_tools={toolkit.config['online_tools']}")
 
+        # 🔄 期货检测：如果是期货代码，切换到期货基本面分析师
+        if market_info['is_futures']:
+            logger.info(f"📊 [基本面分析师] 检测到期货代码 {ticker}，切换到期货基本面分析师")
+            from tradingagents.agents.analysts.futures_fundamentals_analyst import create_futures_fundamentals_analyst
+            futures_analyst_node = create_futures_fundamentals_analyst(llm, toolkit)
+            return futures_analyst_node(state)
+
         # 获取公司名称
         company_name = _get_company_name_for_fundamentals(ticker, market_info)
         logger.debug(f"📊 [DEBUG] 公司名称: {ticker} -> {company_name}")
