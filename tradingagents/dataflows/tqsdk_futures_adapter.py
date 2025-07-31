@@ -399,6 +399,60 @@ class TqSdkFuturesAdapter:
             logger.error(f"❌ 获取期货数据失败: {e}")
             return f"❌ 获取期货数据失败: {str(e)}"
 
+    async def query_quotes(self, ins_class=None, exchange_id=None, product_id=None, expired=None, has_night=None):
+        """
+        根据条件查询合约列表
+        
+        Args:
+            ins_class: 合约类型 ("FUTURE", "INDEX", "CONT", "OPTION", "STOCK")
+            exchange_id: 交易所 ("SHFE", "DCE", "CZCE", "CFFEX", "INE", "GFEX")
+            product_id: 品种代码
+            expired: 是否已下市
+            has_night: 是否有夜盘
+            
+        Returns:
+            List[str]: 符合条件的合约代码列表
+        """
+        if not await self.connect():
+            raise Exception("无法连接到天勤API")
+        
+        try:
+            quotes = self.api.query_quotes(
+                ins_class=ins_class,
+                exchange_id=exchange_id,
+                product_id=product_id,
+                expired=expired,
+                has_night=has_night
+            )
+            return quotes
+        except Exception as e:
+            logger.error(f"❌ 查询合约失败: {e}")
+            return []
+
+    async def get_index_contracts(self, product_id=None):
+        """
+        获取指数合约
+        
+        Args:
+            product_id: 品种代码，如 "cu", "au" 等
+            
+        Returns:
+            List[str]: 指数合约列表
+        """
+        return await self.query_quotes(ins_class="INDEX", product_id=product_id, expired=False)
+
+    async def get_main_contracts(self, product_id=None):
+        """
+        获取主连合约
+        
+        Args:
+            product_id: 品种代码，如 "cu", "au" 等
+            
+        Returns:
+            List[str]: 主连合约列表
+        """
+        return await self.query_quotes(ins_class="CONT", product_id=product_id)
+
     def search_futures(self, keyword: str) -> str:
         """
         搜索期货品种
@@ -410,33 +464,64 @@ class TqSdkFuturesAdapter:
             str: 搜索结果
         """
         try:
-            results = []
-            keyword = keyword.upper()
+            # 使用query_quotes搜索相关合约
+            loop = None
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
             
-            # 搜索匹配的期货品种
-            for symbol, name in self.futures_names.items():
-                if keyword in symbol or keyword in name:
-                    contract = self.index_contracts.get(symbol, f'{symbol}99')
-                    exchange = contract.split('.')[0] if '.' in contract else 'UNKNOWN'
-                    results.append({
-                        'symbol': symbol,
-                        'name': name,
-                        'contract': contract,
-                        'exchange': exchange
-                    })
+            # 搜索期货合约
+            futures_contracts = []
+            index_contracts = []
+            main_contracts = []
             
-            if not results:
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    # 搜索期货合约
+                    future_futures = executor.submit(
+                        lambda: asyncio.run(self.query_quotes(ins_class="FUTURE", product_id=keyword.lower(), expired=False))
+                    )
+                    # 搜索指数合约
+                    future_index = executor.submit(
+                        lambda: asyncio.run(self.query_quotes(ins_class="INDEX", product_id=keyword.lower()))
+                    )
+                    # 搜索主连合约
+                    future_main = executor.submit(
+                        lambda: asyncio.run(self.query_quotes(ins_class="CONT", product_id=keyword.lower()))
+                    )
+                    
+                    futures_contracts = future_futures.result(timeout=10)
+                    index_contracts = future_index.result(timeout=10)
+                    main_contracts = future_main.result(timeout=10)
+            else:
+                futures_contracts = loop.run_until_complete(self.query_quotes(ins_class="FUTURE", product_id=keyword.lower(), expired=False))
+                index_contracts = loop.run_until_complete(self.query_quotes(ins_class="INDEX", product_id=keyword.lower()))
+                main_contracts = loop.run_until_complete(self.query_quotes(ins_class="CONT", product_id=keyword.lower()))
+            
+            if not futures_contracts and not index_contracts and not main_contracts:
                 return f"❌ 未找到匹配'{keyword}'的期货品种"
             
-            result = f"🔍 搜索关键词: {keyword}\n"
-            result += f"找到 {len(results)} 个期货品种:\n\n"
+            result = f"🔍 搜索关键词: {keyword}\n\n"
             
-            for item in results[:10]:  # 最多显示10个结果
-                result += f"代码: {item['symbol']}\n"
-                result += f"名称: {item['name']}\n"
-                result += f"合约: {item['contract']}\n"
-                result += f"交易所: {item['exchange']}\n"
-                result += "-" * 30 + "\n"
+            if index_contracts:
+                result += f"📊 指数合约 ({len(index_contracts)}个):\n"
+                for contract in index_contracts[:5]:
+                    result += f"  {contract}\n"
+                result += "\n"
+            
+            if main_contracts:
+                result += f"🔗 主连合约 ({len(main_contracts)}个):\n"
+                for contract in main_contracts[:5]:
+                    result += f"  {contract}\n"
+                result += "\n"
+            
+            if futures_contracts:
+                result += f"📈 期货合约 ({len(futures_contracts)}个，显示前10个):\n"
+                for contract in futures_contracts[:10]:
+                    result += f"  {contract}\n"
             
             return result
             
@@ -525,3 +610,64 @@ def get_futures_info_tqsdk(symbol: str) -> Dict[str, Any]:
     """
     adapter = get_tqsdk_futures_adapter()
     return adapter.get_futures_info(symbol)
+
+
+def query_quotes_tqsdk(ins_class=None, exchange_id=None, product_id=None, expired=None, has_night=None):
+    """
+    查询合约列表的统一接口
+    
+    Args:
+        ins_class: 合约类型 ("FUTURE", "INDEX", "CONT", "OPTION", "STOCK")
+        exchange_id: 交易所 ("SHFE", "DCE", "CZCE", "CFFEX", "INE", "GFEX")
+        product_id: 品种代码
+        expired: 是否已下市
+        has_night: 是否有夜盘
+        
+    Returns:
+        List[str]: 符合条件的合约代码列表
+    """
+    import asyncio
+    adapter = get_tqsdk_futures_adapter()
+    
+    loop = None
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    if loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(
+                lambda: asyncio.run(adapter.query_quotes(ins_class, exchange_id, product_id, expired, has_night))
+            )
+            return future.result(timeout=10)
+    else:
+        return loop.run_until_complete(adapter.query_quotes(ins_class, exchange_id, product_id, expired, has_night))
+
+
+def get_index_contracts_tqsdk(product_id=None):
+    """
+    获取指数合约的统一接口
+    
+    Args:
+        product_id: 品种代码，如 "cu", "au" 等
+        
+    Returns:
+        List[str]: 指数合约列表
+    """
+    return query_quotes_tqsdk(ins_class="INDEX", product_id=product_id, expired=False)
+
+
+def get_main_contracts_tqsdk(product_id=None):
+    """
+    获取主连合约的统一接口
+    
+    Args:
+        product_id: 品种代码，如 "cu", "au" 等
+        
+    Returns:
+        List[str]: 主连合约列表
+    """
+    return query_quotes_tqsdk(ins_class="CONT", product_id=product_id)
