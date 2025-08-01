@@ -63,51 +63,72 @@ def _get_futures_category(symbol: str) -> dict:
         'financial': {
             'names': ['IF', 'IH', 'IC', 'IM', 'T', 'TF', 'TS'],
             'category': '金融期货',
-            'analysis_focus': ['利率政策', '股市走势', '资金流向', '经济指标']
+            'analysis_focus': [
+                '利率政策', '股市走势', '资金流向', '经济指标',
+                '监管政策', '海外市场联动', '风险偏好'
+            ]
         },
-        
+
         # 贵金属
         'precious_metals': {
             'names': ['AU', 'AG'],
             'category': '贵金属',
-            'analysis_focus': ['通胀预期', '美元指数', '地缘政治', '央行政策']
+            'analysis_focus': [
+                '通胀预期', '实际利率', '美元指数', '地缘政治',
+                '央行政策', '黄金ETF持仓'
+            ]
         },
-        
+
         # 有色金属
         'base_metals': {
             'names': ['CU', 'AL', 'ZN', 'PB', 'NI', 'SN', 'BC'],
             'category': '有色金属',
-            'analysis_focus': ['供需平衡', '库存变化', '下游需求', '进出口数据']
+            'analysis_focus': [
+                '供需平衡', '库存变化', '下游需求', '进出口数据',
+                '电力供应', '海外矿山扰动', '人民币汇率'
+            ]
         },
-        
+
         # 黑色系
         'ferrous_metals': {
             'names': ['RB', 'HC', 'SS', 'I', 'J', 'JM'],
             'category': '黑色系',
-            'analysis_focus': ['钢材需求', '原料供应', '房地产政策', '基建投资']
+            'analysis_focus': [
+                '钢材需求', '原料供应', '房地产政策', '基建投资',
+                '限产政策', '粗钢产量压减', '港口库存与疏港量'
+            ]
         },
-        
+
         # 能源化工
         'energy_chemical': {
             'names': ['SC', 'FU', 'LU', 'BU', 'RU', 'L', 'V', 'PP', 'TA', 'MA', 'ZC', 'UR', 'SA', 'PF'],
             'category': '能源化工',
-            'analysis_focus': ['原油价格', '产能变化', '环保政策', '下游开工率']
+            'analysis_focus': [
+                '原油价格', '产能变化', '环保政策', '下游开工率',
+                '库存周期', '进出口数据', '原料联动价格', '季节性检修'
+            ]
         },
-        
+
         # 农产品
         'agricultural': {
             'names': ['C', 'CS', 'A', 'B', 'M', 'Y', 'P', 'CF', 'SR', 'OI', 'RM', 'AP', 'CJ', 'JD'],
             'category': '农产品',
-            'analysis_focus': ['天气因素', '种植面积', '产量预期', '进出口政策']
+            'analysis_focus': [
+                '天气因素', '种植面积', '产量预期', '进出口政策',
+                '成本支撑因素', '国家储备政策', '消费需求结构'
+            ]
         },
-        
-        # 工业品
+
+        # 工业品（建议细分）
         'industrial': {
             'names': ['FG', 'SI', 'LC'],
             'category': '工业品',
-            'analysis_focus': ['产业政策', '技术进步', '新能源发展', '制造业景气度']
+            'analysis_focus': [
+                '产业政策', '下游行业发展', '新能源投资',
+                '补贴政策', '原料供给', '国际价格联动'
+            ]
         }
-    }
+    }   
     
     for category_key, category_info in categories.items():
         if underlying in category_info['names']:
