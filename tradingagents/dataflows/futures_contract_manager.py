@@ -222,14 +222,26 @@ class FuturesContractManager:
         symbol_lower = symbol.lower()
         symbol_upper = symbol.upper()
         
-        # 在指数合约中查找 (格式: KQ.i@EXCHANGE.symbol，考虑大小写规则)
+        # 在指数合约中查找，使用精确匹配避免混淆
         for contract in self._index_contracts:
-            # 小写格式 (SHFE, DCE, INE)
-            if f".{symbol_lower}" in contract.lower():
-                return contract
-            # 大写格式 (CZCE, GFEX, CFFEX)
-            if f".{symbol_upper}" in contract:
-                return contract
+            if 'KQ.i@' in contract:
+                # 提取合约中的品种代码部分，格式: KQ.i@EXCHANGE.SYMBOL
+                contract_part = contract.replace('KQ.i@', '')
+                if '.' in contract_part:
+                    parts = contract_part.split('.')
+                    if len(parts) >= 2:
+                        exchange, contract_symbol = parts[0], parts[1]
+                        # 精确匹配品种代码（大小写不敏感）
+                        if contract_symbol.upper() == symbol_upper:
+                            return contract
+            else:
+                # 处理其他格式的指数合约，使用精确的结尾匹配
+                # 小写格式 (SHFE, DCE, INE)
+                if contract.lower().endswith(f".{symbol_lower}"):
+                    return contract
+                # 大写格式 (CZCE, GFEX, CFFEX)  
+                if contract.endswith(f".{symbol_upper}"):
+                    return contract
         
         return None
     
