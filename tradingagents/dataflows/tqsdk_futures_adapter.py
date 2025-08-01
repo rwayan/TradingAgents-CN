@@ -93,27 +93,50 @@ class TqSdkFuturesAdapter:
 
     def _normalize_symbol(self, symbol: str) -> str:
         """
-        标准化期货代码
+        标准化期货代码，保持用户输入的具体月份合约格式
         
         Args:
-            symbol: 输入的期货代码，如 'CU'、'cu'、'CU99'、'SHFE.CU99'
+            symbol: 输入的期货代码，如 'CU'、'cu2509'、'CU2501'、'SHFE.CU2501'
             
         Returns:
-            str: 标准化的天勤格式代码，如 'SHFE.CU99'
+            str: 标准化的天勤格式代码，保持用户输入的月份格式
         """
-        symbol = symbol.upper().strip()
+        original_symbol = symbol.strip()  # 保持用户原始输入的大小写
+        symbol = symbol.upper().strip()  # 用于匹配的大写版本
         
         # 如果已经是完整格式，直接返回
-        if '.' in symbol and '99' in symbol:
-            return symbol
+        if '.' in symbol:
+            return original_symbol
         
-        # 使用合约管理器解析代码
+        # 检查是否为具体月份合约（包含数字）
+        import re
+        match = re.match(r'^([A-Za-z]+)(\d{3,4})$', original_symbol)
+        if match:
+            base_symbol = match.group(1)
+            month_code = match.group(2)
+            
+            # 直接通过指数合约获取交易所信息
+            index_code = self.contract_manager.get_index_code(base_symbol.upper())
+            if index_code:
+                # 从指数合约中提取交易所，格式如 KQ.i@SHFE.cu -> SHFE
+                if 'KQ.i@' in index_code:
+                    exchange_part = index_code.replace('KQ.i@', '').split('.')[0]
+                    product_part = index_code.replace('KQ.i@', '').split('.')[1]
+                else:
+                    exchange_part = index_code.split('.')[0]
+                    product_part = index_code.split('.')[1]
+                
+                # 构建用户要求的月份合约，保持用户原始大小写
+                user_contract = f"{exchange_part}.{product_part}{month_code}"
+                logger.debug(f"🔍 构建用户输入的月份合约: {user_contract}")
+                return user_contract
+        
+        # 如果用户只输入了品种代码（如CU），使用指数合约作为兜底
         parsed_symbol, is_index = self.contract_manager.parse_futures_code(symbol)
-        
         if parsed_symbol:
-            # 获取完整代码
             full_code = self.contract_manager.get_full_code(parsed_symbol)
             if full_code:
+                logger.debug(f"🔍 使用指数合约作为兜底: {full_code}")
                 return full_code
         
         # 如果解析失败，尝试直接从输入构建
@@ -126,14 +149,14 @@ class TqSdkFuturesAdapter:
         else:
             base_symbol = symbol
         
-        # 尝试获取完整代码
+        # 尝试获取完整代码（作为最后的兜底）
         full_code = self.contract_manager.get_full_code(base_symbol)
         if full_code:
             return full_code
         
         # 最后的兜底逻辑
         logger.warning(f"⚠️ 无法识别期货代码: {symbol}，返回原始代码")
-        return symbol
+        return original_symbol
 
     def get_futures_name(self, symbol: str) -> str:
         """获取期货品种中文名称"""

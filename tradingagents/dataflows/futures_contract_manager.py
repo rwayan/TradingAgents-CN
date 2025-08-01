@@ -168,6 +168,7 @@ class FuturesContractManager:
         symbol_lower = symbol.lower()
         symbol_upper = symbol.upper()
         
+        
         # 在指数合约中查找 (考虑不同交易所的大小写规则)
         for contract in self._index_contracts:
             contract_lower = contract.lower()
@@ -329,7 +330,7 @@ class FuturesContractManager:
                 return symbol, True
         
         # 检查是否为具体合约格式 (SYMBOL2403)
-        specific_match = re.match(r'^([A-Z]{1,4})\d{4}$', code.upper())
+        specific_match = re.match(r'^([A-Z]{1,4})\d{3,4}$', code.upper())
         if specific_match:
             symbol = specific_match.group(1)
             if self.is_valid_symbol(symbol):

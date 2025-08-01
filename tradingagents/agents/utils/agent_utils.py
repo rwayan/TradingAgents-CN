@@ -1196,8 +1196,7 @@ class Toolkit:
     def get_futures_data_unified(
         ticker: Annotated[str, "期货代码（如：CU99、AU2501、IF99等）"],
         start_date: Annotated[str, "开始日期，格式：YYYY-MM-DD"],
-        end_date: Annotated[str, "结束日期，格式：YYYY-MM-DD"],
-        curr_date: Annotated[str, "当前日期，格式：YYYY-MM-DD"] = None
+        end_date: Annotated[str, "结束日期，格式：YYYY-MM-DD"]
     ) -> str:
         """
         统一的期货数据获取工具

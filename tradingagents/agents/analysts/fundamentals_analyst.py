@@ -3,6 +3,7 @@
 使用统一工具自动识别股票类型并调用相应数据源
 """
 
+from datetime import datetime, timedelta
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import AIMessage
 
@@ -85,7 +86,11 @@ def create_fundamentals_analyst(llm, toolkit):
 
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
-        start_date = '2025-05-28'
+
+        # 默认取当前日期往前90天
+        current_date_dt = datetime.strptime(state["trade_date"], '%Y-%m-%d')
+        start_date = (current_date_dt - timedelta(days=90)).strftime('%Y-%m-%d')
+        
 
         logger.debug(f"📊 [DEBUG] 输入参数: ticker={ticker}, date={current_date}")
         logger.debug(f"📊 [DEBUG] 当前状态中的消息数量: {len(state.get('messages', []))}")

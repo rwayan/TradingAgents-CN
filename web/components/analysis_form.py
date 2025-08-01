@@ -83,7 +83,7 @@ def render_analysis_form():
                     help="输入要分析的期货代码，如 CU99(沪铜指数), IF99(沪深300指数), RB99(螺纹钢指数)，输入完成后请按回车键确认",
                     key="futures_input",
                     autocomplete="off"
-                ).upper().strip()
+                ).strip()
 
                 logger.debug(f"🔍 [FORM DEBUG] 期货text_input返回值: '{stock_symbol}'")
 

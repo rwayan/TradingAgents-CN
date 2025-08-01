@@ -375,8 +375,8 @@ def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, ll
             update_progress(f"🇭🇰 准备分析港股: {formatted_symbol}")
         elif market_type == "期货":
             # 期货代码转为大写
-            formatted_symbol = stock_symbol.upper()
-            logger.debug(f"🔍 [RUNNER DEBUG] 期货代码转大写: '{stock_symbol}' -> '{formatted_symbol}'")
+            formatted_symbol = stock_symbol
+            # logger.debug(f"🔍 [RUNNER DEBUG] 期货代码转大写: '{stock_symbol}' -> '{formatted_symbol}'")
             update_progress(f"📈 准备分析期货: {formatted_symbol}")
         else:
             # 美股代码转为大写
@@ -663,7 +663,7 @@ def validate_analysis_params(stock_symbol, analysis_date, analysts, research_dep
             # 指数合约格式：CU99, IF99 等
             index_format = re.match(r'^[A-Z]{1,3}99$', symbol_upper)
             # 具体合约格式：CU2403, IF2403 等
-            specific_format = re.match(r'^[A-Z]{1,3}\d{4}$', symbol_upper)
+            specific_format = re.match(r'^[A-Z]{1,3}\d{3,4}$', symbol_upper)
             
             if not (index_format or specific_format):
                 errors.append("期货代码格式错误，应为指数合约格式（如：CU99）或具体合约格式（如：CU2403）")

@@ -1136,7 +1136,7 @@ def get_china_stock_info_unified(symbol: str) -> Dict:
     return manager.get_stock_info(symbol)
 
 
-def get_futures_data_unified(symbol: str, start_date: str, end_date: str) -> str:
+def get_futures_data_unified(symbol: str, start_date: str, end_date: str, curr_date:str =None) -> str:
     """
     统一的期货数据获取接口
     自动使用配置的期货数据源，支持备用数据源

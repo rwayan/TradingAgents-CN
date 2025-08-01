@@ -49,7 +49,7 @@ class StockUtils:
             return StockMarket.HONG_KONG
 
         # 期货：2-3位字母+4位数字（如CU2510）或2-3位字母+99（如CU99）
-        if re.match(r'^[A-Z]{1,3}\d{4}$', ticker) or re.match(r'^[A-Z]{1,3}99$', ticker):
+        if re.match(r'^[A-Z]{1,3}\d{3,4}$', ticker) or re.match(r'^[A-Z]{1,3}99$', ticker):
             return StockMarket.FUTURES
 
         # 美股：1-5位字母

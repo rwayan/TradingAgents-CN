@@ -213,6 +213,7 @@ class TradingAgentsGraph:
                 [
                     # 统一工具
                     self.toolkit.get_stock_market_data_unified,
+                    self.toolkit.get_futures_data_unified,
                     # online tools
                     self.toolkit.get_YFin_data_online,
                     self.toolkit.get_stockstats_indicators_report_online,
@@ -243,6 +244,7 @@ class TradingAgentsGraph:
                 [
                     # 统一工具
                     self.toolkit.get_stock_fundamentals_unified,
+                    self.toolkit.get_futures_data_unified,
                     # offline tools
                     self.toolkit.get_finnhub_company_insider_sentiment,
                     self.toolkit.get_finnhub_company_insider_transactions,

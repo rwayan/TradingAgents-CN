@@ -3,8 +3,11 @@
 支持商品期货、金融期货的供需分析、宏观因素分析等
 """
 
+from datetime import datetime, timedelta
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import AIMessage
+
+from tradingagents.utils.future_helper import get_futures_name, get_futures_product
 
 # 导入分析模块日志装饰器
 from tradingagents.utils.tool_logging import log_analyst_module
@@ -26,36 +29,16 @@ def _get_futures_name_for_analysis(symbol: str, futures_info: dict) -> str:
         str: 期货品种名称
     """
     try:
-        if 'name' in futures_info and futures_info['name']:
-            return futures_info['name']
-        else:
-            # 备用方案：根据代码推断名称
-            name_mapping = {
-                'CU': '沪铜', 'AL': '沪铝', 'ZN': '沪锌', 'PB': '沪铅', 'NI': '沪镍',
-                'SN': '沪锡', 'AU': '黄金', 'AG': '白银', 'RB': '螺纹钢', 'HC': '热卷',
-                'SS': '不锈钢', 'FU': '燃料油', 'BU': '沥青', 'RU': '橡胶',
-                'C': '玉米', 'CS': '玉米淀粉', 'A': '豆一', 'B': '豆二', 'M': '豆粕',
-                'Y': '豆油', 'P': '棕榈油', 'J': '焦炭', 'JM': '焦煤', 'I': '铁矿石',
-                'JD': '鸡蛋', 'L': '聚乙烯', 'V': 'PVC', 'PP': '聚丙烯',
-                'CF': '棉花', 'SR': '白糖', 'TA': 'PTA', 'OI': '菜油', 'MA': '甲醇',
-                'ZC': '动力煤', 'FG': '玻璃', 'RM': '菜粕', 'AP': '苹果', 'CJ': '红枣',
-                'UR': '尿素', 'SA': '纯碱', 'PF': '短纤',
-                'IF': '沪深300股指', 'IH': '上证50股指', 'IC': '中证500股指', 'IM': '中证1000股指',
-                'T': '10年期国债', 'TF': '5年期国债', 'TS': '2年期国债',
-                'SC': '原油', 'LU': '低硫燃料油', 'BC': '国际铜',
-                'SI': '工业硅', 'LC': '碳酸锂'
-            }
+        # if 'name' in futures_info and futures_info['name']:
+        #     return futures_info['name']
+        # else:
+
+        # 备用方案：根据代码推断名称
+        
+        # 如果没有提供名称，则使用工具函数获取
+        return get_futures_name(symbol)
             
-            # 提取品种代码
-            underlying = symbol.upper()
-            if underlying.endswith('99'):
-                underlying = underlying[:-2]
-            elif len(underlying) > 2 and underlying[-2:].isdigit():
-                underlying = underlying[:-2]
-            elif len(underlying) > 4 and underlying[-4:].isdigit():
-                underlying = underlying[:-4]
-            
-            return name_mapping.get(underlying, f'期货{underlying}')
+
             
     except Exception as e:
         logger.error(f"❌ [期货基本面分析师] 获取期货名称失败: {e}")
@@ -73,14 +56,7 @@ def _get_futures_category(symbol: str) -> dict:
         dict: 分类信息
     """
     # 提取品种代码
-    underlying = symbol.upper()
-    if underlying.endswith('99'):
-        underlying = underlying[:-2]
-    elif len(underlying) > 2 and underlying[-2:].isdigit():
-        underlying = underlying[:-2]
-    elif len(underlying) > 4 and underlying[-4:].isdigit():
-        underlying = underlying[:-4]
-    
+    underlying = get_futures_product(symbol)    
     # 期货分类
     categories = {
         # 金融期货
@@ -156,7 +132,11 @@ def create_futures_fundamentals_analyst(llm, toolkit):
         
         current_date = state["trade_date"]
         symbol = state["company_of_interest"]
-        start_date = '2025-05-28'
+        # 固定日期是有问题的，改成当前日期往前3个月
+        # 默认取当前日期往前90天
+        current_date_dt = datetime.strptime(state["trade_date"], '%Y-%m-%d')
+        start_date = (current_date_dt - timedelta(days=90)).strftime('%Y-%m-%d')        
+        #start_date = '2025-05-28'  #
         
         logger.debug(f"📊 [DEBUG] 输入参数: symbol={symbol}, date={current_date}")
         logger.debug(f"📊 [DEBUG] 当前状态中的消息数量: {len(state.get('messages', []))}")
@@ -209,7 +189,7 @@ def create_futures_fundamentals_analyst(llm, toolkit):
             f"⚠️ 绝对强制要求：你必须调用工具获取真实数据！不允许任何假设或编造！"
             f"任务：分析{futures_name}（期货代码：{symbol}，{category_info['category']}）"
             f"🔴 立即调用 get_futures_data_unified 工具"
-            f"参数：ticker='{symbol}', start_date='{start_date}', end_date='{current_date}', curr_date='{current_date}'"
+            f"参数：ticker='{symbol}', start_date='{start_date}', end_date='{current_date}'"
             "📊 期货基本面分析要求："
             "- 基于真实期货数据进行深度基本面分析"
             f"- 重点关注{category_info['category']}的特有因素：{analysis_focus_str}"
@@ -398,7 +378,7 @@ def create_futures_fundamentals_analyst(llm, toolkit):
                 logger.error(f"❌ [DEBUG] 强制工具调用分析失败: {e}")
                 report = f"期货基本面分析失败：{str(e)}"
             
-            return {"futures_fundamentals_report": report}
+            return {"fundamentals_report": report}
         
         # 这里不应该到达，但作为备用
         logger.debug(f"📊 [DEBUG] 返回状态: futures_fundamentals_report长度={len(result.content) if hasattr(result, 'content') else 0}")

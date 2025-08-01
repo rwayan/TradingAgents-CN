@@ -150,7 +150,7 @@ class StockDataPreparer:
             # 指数合约格式：CU99, IF99 等
             index_format = re.match(r'^[A-Z]{1,3}99$', stock_code_upper)
             # 具体合约格式：CU2403, IF2403 等
-            specific_format = re.match(r'^[A-Z]{1,3}\d{4}$', stock_code_upper)
+            specific_format = re.match(r'^[A-Z]{1,3}\d{3,4}$', stock_code_upper)
             
             if not (index_format or specific_format):
                 return StockDataPreparationResult(
@@ -704,7 +704,7 @@ class StockDataPreparer:
         logger.info(f"📊 [期货数据] 开始准备{stock_code}的数据 (时长: {period_days}天)")
 
         # 标准化期货代码格式
-        formatted_code = stock_code.upper()
+        formatted_code = stock_code
 
         # 计算日期范围
         end_date = datetime.strptime(analysis_date, '%Y-%m-%d')

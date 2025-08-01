@@ -3,6 +3,7 @@
 支持期货特有的技术指标分析，如持仓量变化、成交量分析等
 """
 
+from datetime import datetime, timedelta
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import AIMessage
 
@@ -96,7 +97,11 @@ def create_futures_technical_analyst(llm, toolkit):
         
         current_date = state["trade_date"]
         symbol = state["company_of_interest"]
-        start_date = '2025-05-28'
+        # 固定日期是有问题的，改成当前日期往前3个月
+        # 默认取当前日期往前90天
+        current_date_dt = datetime.strptime(state["trade_date"], '%Y-%m-%d')
+        start_date = (current_date_dt - timedelta(days=90)).strftime('%Y-%m-%d')        
+        #start_date = '2025-05-28'  #
         
         logger.debug(f"📈 [DEBUG] 输入参数: symbol={symbol}, date={current_date}")
         logger.debug(f"📈 [DEBUG] 当前状态中的消息数量: {len(state.get('messages', []))}")
@@ -149,7 +154,7 @@ def create_futures_technical_analyst(llm, toolkit):
             f"⚠️ 绝对强制要求：你必须调用工具获取真实期货数据！不允许任何假设或编造！"
             f"任务：对{futures_name}（期货代码：{symbol}）进行技术分析"
             f"🔴 立即调用 get_futures_data_unified 工具"
-            f"参数：ticker='{symbol}', start_date='{start_date}', end_date='{current_date}', curr_date='{current_date}'"
+            f"参数：ticker='{symbol}', start_date='{start_date}', end_date='{current_date}'"
             "📈 期货技术分析要求："
             "- 基于真实期货价格数据进行技术分析"
             f"- 重点关注期货特有指标：{key_indicators_str}"
@@ -289,8 +294,7 @@ def create_futures_technical_analyst(llm, toolkit):
                     combined_data = futures_tool.invoke({
                         'ticker': symbol,
                         'start_date': start_date,
-                        'end_date': current_date,
-                        'curr_date': current_date
+                        'end_date': current_date
                     })
                     logger.debug(f"📈 [DEBUG] 期货数据获取成功，长度: {len(combined_data)}字符")
                 else:
@@ -347,7 +351,13 @@ def create_futures_technical_analyst(llm, toolkit):
                 logger.error(f"❌ [DEBUG] 强制工具调用分析失败: {e}")
                 report = f"期货技术分析失败：{str(e)}"
             
-            return {"futures_technical_report": report}
+            # return {"futures_technical_report": report}
+            return {
+            "messages": [result],
+            "market_report": report,
+            }
+        logger.debug(f"📈 [DEBUG] 期货技术分析师节点结束"       )
+        
         
         # 这里不应该到达，但作为备用
         logger.debug(f"📈 [DEBUG] 返回状态: futures_technical_report长度={len(result.content) if hasattr(result, 'content') else 0}")
