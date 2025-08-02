@@ -6,6 +6,7 @@
 
 import os
 import asyncio
+import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import pandas as pd
@@ -104,11 +105,11 @@ class TqSdkFuturesAdapter:
         original_symbol = symbol.strip()  # 保持用户原始输入的大小写
         symbol = symbol.upper().strip()  # 用于匹配的大写版本
         
-        # 如果已经是完整格式，直接返回
+        # 如果已经是完整格式，直接返回，这里假设完整格式为 '交易所.品种代码月份' SHFE.cu2512
         if '.' in symbol:
             return original_symbol
         
-        # 检查是否为具体月份合约（包含数字）
+        # 检查是否为具体月份合约（包含数字）不含交易所
         import re
         match = re.match(r'^([A-Za-z]+)(\d{3,4})$', original_symbol)
         if match:
@@ -158,7 +159,7 @@ class TqSdkFuturesAdapter:
         logger.warning(f"⚠️ 无法识别期货代码: {symbol}，返回原始代码")
         return original_symbol
 
-    def get_futures_name(self, symbol: str) -> str:
+    def xx_get_futures_name(self, symbol: str) -> str:
         """获取期货品种中文名称"""
         parsed_symbol, is_index = self.contract_manager.parse_futures_code(symbol)
         if parsed_symbol:
@@ -170,6 +171,24 @@ class TqSdkFuturesAdapter:
     def _extract_underlying(self, symbol: str) -> str:
         """提取期货品种代码"""
         normalized = self._normalize_symbol(symbol)
+
+        if normalized.startswith('KQ.i@') :
+            # 如果是指数合约，直接返回指数代码
+            return normalized.replace('KQ.i@', '').split('.')[1]
+        if normalized.startswith('KQ.m@'):
+            # 如果是主连合约，直接返回主连代码
+            return normalized.replace('KQ.m@', '').split('.')[1]
+        
+        # 如果是完整的天勤格式，提取品种代码
+        m = re.match(r'([A-Za-z]+)\d{3,4}', normalized)
+        if m:
+            underlying = m.group(1)
+            if underlying.endswith('99'):
+                return underlying[:-2]
+            return underlying
+
+        if normalized.startswith('SHFE.'):
+            return normalized.split('.')[1].replace('99', '')
         if '.' in normalized:
             return normalized.split('.')[1].replace('99', '')
         return symbol.upper()
@@ -184,42 +203,44 @@ class TqSdkFuturesAdapter:
         Returns:
             Dict: 期货基本信息
         """
-        parsed_symbol, is_index = self.contract_manager.parse_futures_code(symbol)
+        # parsed_symbol, is_index = self.contract_manager.parse_futures_code(symbol)
         
-        if parsed_symbol:
-            contract = self.contract_manager.get_contract(parsed_symbol)
-            if contract:
-                return {
-                    'symbol': contract['full_code'],
-                    'underlying': contract['symbol'],
-                    'name': contract['name'],
-                    'exchange': contract.get('exchange', 'UNKNOWN'),
-                    'exchange_name': contract.get('exchange_name', '未知交易所'),
-                    'category': contract.get('category', '未知分类'),
-                    'multiplier': contract.get('multiplier', 1),
-                    'min_change': contract.get('min_change', 0.01),
-                    'margin_rate': contract.get('margin_rate', 0.1),
-                    'trading_unit': contract.get('trading_unit', '1手'),
-                    'is_futures': True,
-                    'is_index_contract': contract.get('is_index', False),
-                    'contract_type': contract.get('contract_type', 'UNKNOWN'),
-                    'currency': 'CNY'
-                }
+        # if parsed_symbol:
+        #     contract = self.contract_manager.get_contract(parsed_symbol)
+        #     if contract:
+        #         return {
+        #             'symbol': contract['full_code'],
+        #             'underlying': contract['symbol'],
+        #             'name': contract['name'],
+        #             'exchange': contract.get('exchange', 'UNKNOWN'),
+        #             'exchange_name': contract.get('exchange_name', '未知交易所'),
+        #             'category': contract.get('category', '未知分类'),
+        #             'multiplier': contract.get('multiplier', 1),
+        #             'min_change': contract.get('min_change', 0.01),
+        #             'margin_rate': contract.get('margin_rate', 0.1),
+        #             'trading_unit': contract.get('trading_unit', '1手'),
+        #             'is_futures': True,
+        #             'is_index_contract': contract.get('is_index', False),
+        #             'contract_type': contract.get('contract_type', 'UNKNOWN'),
+        #             'currency': 'CNY'
+        #         }
         
         # 兜底处理
         normalized_symbol = self._normalize_symbol(symbol)
-        underlying = self._extract_underlying(symbol)
+        contract = self.contract_manager.get_contract_info(normalized_symbol)  # 确保合约存在
+        return contract
+        # underlying = self._extract_underlying(symbol)
         
-        return {
-            'symbol': normalized_symbol,
-            'underlying': underlying,
-            'name': self.get_futures_name(symbol),
-            'exchange': normalized_symbol.split('.')[0] if '.' in normalized_symbol else 'UNKNOWN',
-            'exchange_name': '未知交易所',
-            'is_futures': True,
-            'is_index_contract': True,
-            'currency': 'CNY'
-        }
+        # return {
+        #     'symbol': normalized_symbol,
+        #     'underlying': underlying,
+        #     'name': self.get_futures_name(symbol),
+        #     'exchange': normalized_symbol.split('.')[0] if '.' in normalized_symbol else 'UNKNOWN',
+        #     'exchange_name': '未知交易所',
+        #     'is_futures': True,
+        #     'is_index_contract': True,
+        #     'currency': 'CNY'
+        # }
 
     async def get_realtime_quote(self, symbol: str) -> Dict[str, Any]:
         """
@@ -244,7 +265,7 @@ class TqSdkFuturesAdapter:
                 raise Exception(f"无法获取{normalized_symbol}的行情数据")
             
             # 等待数据更新
-            await asyncio.sleep(0.5)
+            await self.api.wait_update()
             
             return {
                 'symbol': normalized_symbol,

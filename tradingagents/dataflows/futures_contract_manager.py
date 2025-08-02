@@ -4,6 +4,7 @@
 支持从TQSdk API动态获取合约信息
 """
 
+import time
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -56,7 +57,7 @@ class FuturesContractManager:
     
     def __init__(self):
         """初始化合约管理器"""
-        self._contracts_cache: Dict[str, Dict] = {}  # 动态合约缓存
+        self._contracts_cache: List[str]= []  # 动态合约缓存
         self._index_contracts: List[str] = []        # 指数合约列表
         self._main_contracts: List[str] = []         # 主连合约列表
         self._futures_contracts: Dict[str, List[str]] = {}  # 期货合约按交易所分类
@@ -128,6 +129,9 @@ class FuturesContractManager:
                 except Exception as e:
                     logger.warning(f"⚠️ 获取 {exchange} 合约失败: {e}")
             
+            self._contracts_cache = [item for sublist in self._futures_contracts.values() for item in sublist]
+            self._contracts_cache += self._index_contracts + self._main_contracts
+            logger.info(f"✅ 合约信息刷新完成，共 {len(self._contracts_cache)} 个合约")
             self._last_update = datetime.now()
             logger.info("🎉 合约信息刷新完成")
             return True
@@ -216,7 +220,10 @@ class FuturesContractManager:
         return None
     
     def get_index_code(self, symbol: str) -> Optional[str]:
-        """根据品种代码获取指数合约代码"""
+        """根据品种代码获取指数合约代码
+        输入是品种代码（如 CU99）不区分大小写，
+        返回完整的指数合约代码（如KQ.i@SHFE.rb）区分大小写
+        """
         self._sync_refresh_contracts()
         
         symbol_lower = symbol.lower()
@@ -246,7 +253,9 @@ class FuturesContractManager:
         return None
     
     def get_symbol_from_index(self, index_code: str) -> Optional[str]:
-        """根据指数合约代码获取品种代码"""
+        """根据指数合约代码获取品种代码
+        这里返回的品种代码都是大写的
+        """
         index_code = index_code.upper()
         
         # 从指数合约代码中提取品种代码 (格式: KQ.i@EXCHANGE.SYMBOL)
@@ -285,7 +294,9 @@ class FuturesContractManager:
         return None
     
     def is_valid_symbol(self, symbol: str) -> bool:
-        """验证品种代码是否有效（从天勤API动态验证）"""
+        """验证品种代码是否有效（从天勤API动态验证）
+        目前看到的品种代码都是product_id的意思
+        """
         return self.get_contract(symbol) is not None
     
     def is_valid_index_code(self, index_code: str) -> bool:
@@ -296,7 +307,7 @@ class FuturesContractManager:
     def parse_futures_code(self, code: str) -> Tuple[Optional[str], bool]:
         """
         解析期货代码
-        返回: (品种代码, 是否为指数合约)
+        返回: (品种代码product_id 大写的, 是否为指数合约)
         """
         code = code.strip()
         
@@ -398,17 +409,10 @@ class FuturesContractManager:
         # 从指数合约中提取品种代码
         import re
         for contract in self._index_contracts:
-            # 匹配大写品种代码 (CZCE, GFEX, CFFEX)
-            match = re.match(r'^KQ\.i@[A-Z]+\.([A-Z]+)$', contract)
+            # 匹配大写品种代码 (CZCE, GFEX, CFFEX) # 匹配小写品种代码 (SHFE, DCE, INE)
+            match = re.match(r'^KQ\.i@[A-Z]+\.([A-Za-z]+)$', contract)
             if match:
-                symbols.add(match.group(1))
-                continue
-            
-            # 匹配小写品种代码 (SHFE, DCE, INE)
-            match = re.match(r'^KQ\.i@[A-Z]+\.([a-z]+)$', contract)
-            if match:
-                symbols.add(match.group(1).upper())
-        
+                symbols.add(match.group(1))        
         return list(symbols)
     
     def get_all_index_codes(self) -> List[str]:
@@ -418,11 +422,124 @@ class FuturesContractManager:
     
     def get_contract_info(self, symbol: str) -> Dict:
         """获取合约详细信息（字典格式）"""
-        contract = self.get_contract(symbol)
-        if not contract:
+        try:
+            adapter = self._get_tqsdk_adapter()
+            if not adapter:
+                logger.warning(f"⚠️ 无法获取天勤适配器，返回空合约信息")
+                return {}
+            
+            normalized_symbol = adapter._normalize_symbol(symbol)
+            
+            # 添加异常处理来保护 query_symbol_info 调用
+            try:
+                # query_symbol_info 返回 pandas DataFrame，需要传入列表
+                if normalized_symbol in self._contracts_cache:
+                    df_result = adapter.api.query_symbol_info(normalized_symbol)
+                    if df_result is None or df_result.empty:
+                        logger.warning(f"⚠️ 未找到合约信息: {normalized_symbol}")
+                        return {}
+                
+                    # 将 DataFrame 的第一行转为字典
+                    raw_data = dict(df_result.iloc[0])
+                
+                    # 转换为标准化的合约信息格式，满足各调用方的期望
+                    contract_info = {
+                        # 基本信息（满足测试和验证需求）
+                        'symbol': normalized_symbol,
+                        'underlying': self._extract_underlying_from_symbol(normalized_symbol),
+                        'name': raw_data.get("instrument_name",self._get_contract_name(symbol)),
+                        
+                        # 交易所信息
+                        'exchange': normalized_symbol.split('.')[0] if '.' in normalized_symbol else 'UNKNOWN',
+                        'exchange_name': self._get_exchange_name(normalized_symbol),
+                        
+                        # 价格信息（处理 NaN 值）
+                        'upper_limit': float(raw_data.get('upper_limit', 0)) if self._is_valid_number(raw_data.get('upper_limit')) else 0,
+                        'lower_limit': float(raw_data.get('lower_limit', 0)) if self._is_valid_number(raw_data.get('lower_limit')) else 0,
+                        'pre_settlement': float(raw_data.get('pre_settlement', 0)) if self._is_valid_number(raw_data.get('pre_settlement')) else 0,
+                        'pre_close': float(raw_data.get('pre_close', 0)) if self._is_valid_number(raw_data.get('pre_close')) else 0,
+                        'pre_open_interest': int(raw_data.get('pre_open_interest', 0)) if self._is_valid_number(raw_data.get('pre_open_interest')) else 0,
+                        
+                        # 合约属性
+                        'is_futures': True,
+                        'is_index_contract': '99' in normalized_symbol or 'KQ.i@' in normalized_symbol,
+                        'currency': 'CNY',
+                        
+                        # 期货特有信息
+                        'delivery_year': int(raw_data.get('delivery_year', 0)) if self._is_valid_number(raw_data.get('delivery_year')) else 0,
+                        'delivery_month': int(raw_data.get('delivery_month', 0)) if self._is_valid_number(raw_data.get('delivery_month')) else 0,
+                        
+                        # 原始数据（保留所有TQSdk返回的字段）
+                        'raw_data': raw_data
+                    }
+                    
+                    return contract_info
+                else:
+                    logger.warning(f"⚠️ 合约 {normalized_symbol} 不在缓存中，无法获取信息")
+                    return {}
+            except Exception as e:
+                logger.error(f"❌ 查询合约信息失败1 {normalized_symbol}: {e}")
+                adapter.api.wait_update(deadline=time.time() + 2 )  # 确保API状态更新
+                return {}
+                
+        except Exception as e:
+            logger.error(f"❌ 获取合约信息失败 {symbol}: {e}")
+            adapter.api.wait_update(deadline=time.time() + 2)  # 确保API状态更新
             return {}
-        
-        return contract
+    
+    def _is_valid_number(self, value) -> bool:
+        """检查值是否为有效数字（非NaN）"""
+        if value is None:
+            return False
+        try:
+            import math
+            return not math.isnan(float(value))
+        except (ValueError, TypeError):
+            return False
+    
+    def _extract_underlying_from_symbol(self, symbol: str) -> str:
+        """从合约代码中提取基础品种代码"""
+        if 'KQ.i@' in symbol:
+            # 指数合约格式: KQ.i@SHFE.cu
+            return symbol.replace('KQ.i@', '').split('.')[1].upper()
+        elif 'KQ.m@' in symbol:
+            # 主连合约格式: KQ.m@SHFE.cu  
+            return symbol.replace('KQ.m@', '').split('.')[1].upper()
+        elif '.' in symbol:
+            # 标准格式: SHFE.cu2501
+            parts = symbol.split('.')[1]
+            import re
+            match = re.match(r'^([A-Za-z]+)', parts)
+            return match.group(1).upper() if match else parts.upper()
+        else:
+            # 简单格式
+            import re
+            match = re.match(r'^([A-Za-z]+)', symbol)
+            return match.group(1).upper() if match else symbol.upper()
+    
+    def _get_contract_name(self, symbol: str) -> str:
+        """获取合约中文名称"""
+        underlying = self._extract_underlying_from_symbol(symbol)
+        # 这里可以扩展为更具体的品种名称映射
+        return f'期货{underlying}'
+    
+    def _get_exchange_name(self, symbol: str) -> str:
+        """获取交易所中文名称"""
+        if '.' in symbol:
+            exchange_code = symbol.split('.')[0]
+            if 'KQ.i@' in symbol or 'KQ.m@' in symbol:
+                exchange_code = symbol.replace('KQ.i@', '').replace('KQ.m@', '').split('.')[0]
+            
+            exchange_mapping = {
+                'SHFE': '上海期货交易所',
+                'DCE': '大连商品交易所', 
+                'CZCE': '郑州商品交易所',
+                'CFFEX': '中国金融期货交易所',
+                'INE': '上海国际能源交易中心',
+                'GFEX': '广州期货交易所'
+            }
+            return exchange_mapping.get(exchange_code, '未知交易所')
+        return '未知交易所'
     
     def validate_futures_input(self, code: str) -> Tuple[bool, str, Optional[Dict]]:
         """

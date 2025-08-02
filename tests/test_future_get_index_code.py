@@ -14,7 +14,7 @@ print('=' * 50)
 
 
 test_cases = [   
-    'T2501',      # 应该返回 CFFEX.T2501
+    'T2512',      # 应该返回 CFFEX.T2501
     'TS2501',     # 应该返回 CFFEX.TS2501
     'i2501',      # 应该返回 DCE.i2501
     'cu2509',     # 应该返回 SHFE.cu2509
@@ -26,5 +26,8 @@ test_cases = [
 
 for case in test_cases:
     result = adapter._normalize_symbol(case)
+    contract = adapter.get_futures_info(case)
+    
     print(f"输入: {case} -> 输出: {result}")
+    print(f"输入: {case} -> 期货信息: {contract}")
 
