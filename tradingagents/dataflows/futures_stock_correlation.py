@@ -12,6 +12,9 @@ from typing import Dict, List, Tuple, Optional, Set
 from dataclasses import dataclass
 import time
 
+# 导入统一日志系统
+from tradingagents.utils.logging_init import get_logger
+logger = get_logger("dataflows")
 
 @dataclass
 class StockInfo:
@@ -66,7 +69,7 @@ class FuturesStockCorrelation:
             match = re.search(pattern, response.text, re.DOTALL)
             
             if not match:
-                print("未能找到pagedata变量")
+                logger.warning("未能找到pagedata变量")
                 return False
                 
             pagedata_str = match.group(1)
@@ -76,17 +79,17 @@ class FuturesStockCorrelation:
             self._parse_pagedata(pagedata)
             self.last_update_time = time.time()
             
-            print(f"数据获取成功，共获取 {len(self.futures_data)} 个期货品种")
+            logger.info(f"数据获取成功，共获取 {len(self.futures_data)} 个期货品种")
             return True
             
         except requests.RequestException as e:
-            print(f"网络请求失败: {e}")
+            logger.warning(f"网络请求失败: {e}")
             return False
         except json.JSONDecodeError as e:
-            print(f"JSON解析失败: {e}")
+            logger.warning(f"JSON解析失败: {e}")
             return False
         except Exception as e:
-            print(f"数据获取失败: {e}")
+            logger.warning(f"数据获取失败: {e}")
             return False
     
     def _parse_pagedata(self, pagedata: dict):
@@ -297,21 +300,21 @@ class FuturesStockCorrelation:
     def print_summary(self):
         """打印数据统计摘要"""
         if not self._ensure_data_fresh():
-            print("无法获取数据")
+            logger.warning("无法获取数据")
             return
         
-        print(f"\n=== 期货股票关联数据统计 ===")
-        print(f"期货品种总数: {len(self.futures_data)}")
-        print(f"涉及股票总数: {len(self.stock_to_futures)}")
-        print(f"数据更新时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.last_update_time))}")
+        logger.info(f"\n=== 期货股票关联数据统计 ===")
+        logger.info(f"期货品种总数: {len(self.futures_data)}")
+        logger.info(f"涉及股票总数: {len(self.stock_to_futures)}")
+        logger.info(f"数据更新时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.last_update_time))}")
         
-        print(f"\n=== 分类统计 ===")
+        logger.info(f"\n=== 分类统计 ===")
         categories = {}
         for info in self.futures_data.values():
             categories[info.category] = categories.get(info.category, 0) + 1
         
         for category, count in categories.items():
-            print(f"{category}: {count} 个品种")
+            logger.info(f"{category}: {count} 个品种")
 
 
 # 便利函数，供外部直接调用
