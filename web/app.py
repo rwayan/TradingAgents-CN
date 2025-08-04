@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TradingAgents-CN Streamlit Web界面
+前海盈富 Streamlit Web界面
 基于Streamlit的股票分析Web应用程序
 """
 
@@ -37,7 +37,7 @@ from utils.smart_session_manager import get_persistent_analysis_id, set_persiste
 
 # 设置页面配置
 st.set_page_config(
-    page_title="TradingAgents-CN 股票分析平台",
+    page_title="前海盈富股票期货分析平台",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -530,7 +530,7 @@ def main():
     render_header()
 
     # 页面导航
-    st.sidebar.title("🤖 TradingAgents-CN")
+    st.sidebar.title("🤖 前海盈富")
     st.sidebar.markdown("---")
 
     # 添加功能切换标题

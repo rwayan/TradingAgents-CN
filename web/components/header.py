@@ -10,7 +10,7 @@ def render_header():
     # 主标题
     st.markdown("""
     <div class="main-header">
-        <h1>🚀 TradingAgents-CN 股票分析平台</h1>
+        <h1>🚀 前海盈富 股票期货分析平台</h1>
         <p>基于多智能体大语言模型的中文金融交易决策框架</p>
     </div>
     """, unsafe_allow_html=True)
