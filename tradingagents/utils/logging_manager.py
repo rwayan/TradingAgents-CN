@@ -146,7 +146,7 @@ class TradingAgentsLogger:
                     # 转换配置格式
                     return self._convert_toml_config(config_data)
                 except Exception as e:
-                    logger.warning(f"警告: 无法加载配置文件 {config_path}: {e}")
+                    logging.getLogger().warning(f"警告: 无法加载配置文件 {config_path}: {e}")
                     continue
 
         return None
@@ -159,7 +159,7 @@ class TradingAgentsLogger:
         is_docker = (
             os.getenv('DOCKER_CONTAINER') == 'true' or
             logging_config.get('docker', {}).get('enabled', False)
-        )
+        )       
 
         return {
             'level': logging_config.get('level', 'INFO'),

@@ -370,6 +370,113 @@ class TqSdkFuturesAdapter:
             logger.error(f"❌ 获取{symbol}历史数据失败: {e}")
             return pd.DataFrame()
 
+    def get_futures_technical_indicators(self, data: pd.DataFrame, period: int = 20) -> Dict:
+        """
+        计算期货技术指标
+        Args:
+            data: 期货历史数据DataFrame
+            period: 计算周期
+        Returns:
+            Dict: 技术指标数据
+        """
+        try:
+            if data.empty or len(data) < 5:
+                return {}
+            
+            # 计算技术指标
+            indicators = {}
+            
+            # 移动平均线
+            indicators['MA5'] = data['close'].rolling(5).mean().iloc[-1] if len(data) >= 5 else None
+            indicators['MA10'] = data['close'].rolling(10).mean().iloc[-1] if len(data) >= 10 else None
+            indicators['MA20'] = data['close'].rolling(20).mean().iloc[-1] if len(data) >= 20 else None
+            indicators['MA60'] = data['close'].rolling(60).mean().iloc[-1] if len(data) >= 60 else None
+            
+            # RSI (相对强弱指标)
+            if len(data) >= 14:
+                delta = data['close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                rs = gain / loss
+                indicators['RSI'] = (100 - (100 / (1 + rs))).iloc[-1]
+            
+            # MACD (平滑异同移动平均线)
+            if len(data) >= 26:
+                exp1 = data['close'].ewm(span=12).mean()
+                exp2 = data['close'].ewm(span=26).mean()
+                macd = exp1 - exp2
+                signal = macd.ewm(span=9).mean()
+                indicators['MACD'] = macd.iloc[-1]
+                indicators['MACD_Signal'] = signal.iloc[-1]
+                indicators['MACD_Histogram'] = (macd - signal).iloc[-1]
+            
+            # 布林带 (Bollinger Bands)
+            if len(data) >= 20:
+                sma = data['close'].rolling(20).mean()
+                std = data['close'].rolling(20).std()
+                indicators['BB_Upper'] = (sma + 2 * std).iloc[-1]
+                indicators['BB_Middle'] = sma.iloc[-1]
+                indicators['BB_Lower'] = (sma - 2 * std).iloc[-1]
+                indicators['BB_Width'] = ((sma + 2 * std) - (sma - 2 * std)).iloc[-1]
+            
+            # KDJ指标
+            if len(data) >= 9:
+                high_9 = data['high'].rolling(9).max()
+                low_9 = data['low'].rolling(9).min()
+                rsv = (data['close'] - low_9) / (high_9 - low_9) * 100
+                k = rsv.ewm(com=2).mean()
+                d = k.ewm(com=2).mean()
+                j = 3 * k - 2 * d
+                indicators['KDJ_K'] = k.iloc[-1]
+                indicators['KDJ_D'] = d.iloc[-1]
+                indicators['KDJ_J'] = j.iloc[-1]
+            
+            # 威廉指标 (Williams %R)
+            if len(data) >= 14:
+                high_14 = data['high'].rolling(14).max()
+                low_14 = data['low'].rolling(14).min()
+                wr = -100 * (high_14 - data['close']) / (high_14 - low_14)
+                indicators['WR'] = wr.iloc[-1]
+            
+            # 价格变化率 (Rate of Change)
+            if len(data) >= 12:
+                roc = ((data['close'] - data['close'].shift(12)) / data['close'].shift(12) * 100)
+                indicators['ROC'] = roc.iloc[-1]
+            
+            # 成交量相关指标
+            if 'volume' in data.columns and len(data) >= 5:
+                indicators['Volume_MA5'] = data['volume'].rolling(5).mean().iloc[-1]
+                indicators['Volume_MA20'] = data['volume'].rolling(20).mean().iloc[-1] if len(data) >= 20 else None
+                
+                # 量价比
+                volume_price_ratio = data['volume'] / data['close']
+                indicators['Volume_Price_Ratio'] = volume_price_ratio.iloc[-1]
+            
+            # 持仓量相关指标（期货特有）
+            if 'open_interest' in data.columns and len(data) >= 5:
+                indicators['OI_MA5'] = data['open_interest'].rolling(5).mean().iloc[-1]
+                indicators['OI_Change'] = (data['open_interest'].iloc[-1] - data['open_interest'].iloc[-2]) if len(data) > 1 else 0
+                indicators['OI_Change_Pct'] = (indicators['OI_Change'] / data['open_interest'].iloc[-2] * 100) if len(data) > 1 and data['open_interest'].iloc[-2] != 0 else 0
+            
+            # 波动率指标
+            if len(data) >= 20:
+                returns = data['close'].pct_change()
+                indicators['Volatility_20d'] = returns.rolling(20).std().iloc[-1] * 100  # 转换为百分比
+            
+            # ATR (真实波动幅度均值)
+            if len(data) >= 14:
+                high_low = data['high'] - data['low']
+                high_close = abs(data['high'] - data['close'].shift())
+                low_close = abs(data['low'] - data['close'].shift())
+                true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+                indicators['ATR'] = true_range.rolling(14).mean().iloc[-1]
+            
+            return indicators
+            
+        except Exception as e:
+            logger.error(f"计算期货技术指标失败: {e}")
+            return {}
+
     def get_futures_data(self, symbol: str, start_date: str, end_date: str) -> str:
         """
         获取期货数据的统一接口（同步版本）
@@ -416,6 +523,9 @@ class TqSdkFuturesAdapter:
             change = latest_price - prev_close
             change_pct = (change / prev_close * 100) if prev_close != 0 else 0
             
+            # 计算技术指标
+            indicators = self.get_futures_technical_indicators(data)
+            
             # 格式化数据报告
             result = f"📊 {futures_info['name']}({futures_info['symbol']}) - 天勤期货数据\n"
             result += f"交易所: {futures_info['exchange_name']}\n"
@@ -423,7 +533,7 @@ class TqSdkFuturesAdapter:
             result += f"数据条数: {len(data)}条\n\n"
             
             result += f"💰 最新价格: ¥{latest_price:.2f}\n"
-            result += f"💰 最新价格日期: ¥{latest_data['date']}\n"
+            result += f"💰 最新价格日期: {latest_data['date']}\n"
             result += f"📈 涨跌额: {change:+.2f} ({change_pct:+.2f}%)\n\n"
             
             # 添加统计信息
@@ -435,11 +545,62 @@ class TqSdkFuturesAdapter:
             if 'open_interest' in data.columns:
                 result += f"   最新持仓量: {data['open_interest'].iloc[-1]:,.0f}手\n"
             
+            # 添加技术指标信息
+            if indicators:
+                result += f"\n🔍 技术指标分析:\n"
+                
+                # 移动平均线
+                if indicators.get('MA5'):
+                    result += f"   MA5: ¥{indicators.get('MA5', 0):.2f}\n"
+                if indicators.get('MA10'):
+                    result += f"   MA10: ¥{indicators.get('MA10', 0):.2f}\n"
+                if indicators.get('MA20'):
+                    result += f"   MA20: ¥{indicators.get('MA20', 0):.2f}\n"
+                if indicators.get('MA60'):
+                    result += f"   MA60: ¥{indicators.get('MA60', 0):.2f}\n"
+                
+                # 技术指标
+                if indicators.get('RSI'):
+                    result += f"   RSI: {indicators.get('RSI', 0):.2f}\n"
+                if indicators.get('MACD'):
+                    result += f"   MACD: {indicators.get('MACD', 0):.4f}\n"
+                    result += f"   MACD信号线: {indicators.get('MACD_Signal', 0):.4f}\n"
+                    result += f"   MACD柱状线: {indicators.get('MACD_Histogram', 0):.4f}\n"
+                
+                # 布林带
+                if indicators.get('BB_Upper'):
+                    result += f"   布林带上轨: ¥{indicators.get('BB_Upper', 0):.2f}\n"
+                    result += f"   布林带中轨: ¥{indicators.get('BB_Middle', 0):.2f}\n"
+                    result += f"   布林带下轨: ¥{indicators.get('BB_Lower', 0):.2f}\n"
+                
+                # KDJ指标
+                if indicators.get('KDJ_K'):
+                    result += f"   KDJ_K: {indicators.get('KDJ_K', 0):.2f}\n"
+                    result += f"   KDJ_D: {indicators.get('KDJ_D', 0):.2f}\n"
+                    result += f"   KDJ_J: {indicators.get('KDJ_J', 0):.2f}\n"
+                
+                # 其他指标
+                if indicators.get('WR'):
+                    result += f"   威廉指标: {indicators.get('WR', 0):.2f}\n"
+                if indicators.get('ATR'):
+                    result += f"   真实波动幅度(ATR): {indicators.get('ATR', 0):.2f}\n"
+                if indicators.get('Volatility_20d'):
+                    result += f"   20日波动率: {indicators.get('Volatility_20d', 0):.2f}%\n"
+                
+                # 成交量指标
+                if indicators.get('Volume_MA5'):
+                    result += f"   成交量MA5: {indicators.get('Volume_MA5', 0):,.0f}手\n"
+                if indicators.get('Volume_MA20'):
+                    result += f"   成交量MA20: {indicators.get('Volume_MA20', 0):,.0f}手\n"
+                
+                # 持仓量指标（期货特有）
+                if indicators.get('OI_Change') is not None:
+                    result += f"   持仓量变化: {indicators.get('OI_Change', 0):+,.0f}手 ({indicators.get('OI_Change_Pct', 0):+.2f}%)\n"
+            
             result += f"\n📈 最近30日数据:\n"
             recent_data = data.tail(30)[['date', 'open', 'high', 'low', 'close', 'volume','open_interest']].copy()
             result += recent_data.to_string(index=False, float_format='%.2f')
             
-
 
             logger.info(f"✅ 成功获取{futures_info['name']}数据，{len(data)}条记录")
             return result
