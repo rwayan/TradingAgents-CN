@@ -3,6 +3,7 @@
 """
 期货与股票关联查询工具
 从东方财富网获取期货相关股票数据，实现双向查询功能
+支持期货合约代码与股票代码的双向映射
 """
 
 import re
@@ -13,8 +14,11 @@ from dataclasses import dataclass
 import time
 
 # 导入统一日志系统
-from tradingagents.utils.logging_init import get_logger
-logger = get_logger("dataflows")
+from tradingagents.utils.logging_init import setup_dataflow_logging
+logger = setup_dataflow_logging()
+
+# 导入期货合约映射
+from tradingagents.utils.future_helper import FUTURES_NAME_MAPPING, FUTURES_CODE_MAPPING, get_futures_product
 
 @dataclass
 class StockInfo:
@@ -297,6 +301,97 @@ class FuturesStockCorrelation:
         
         return result
     
+    def get_stocks_by_contract_code(self, contract_code: str) -> List[StockInfo]:
+        """
+        根据期货合约代码获取相关股票
+        
+        Args:
+            contract_code: 期货合约代码，如 "CU2501", "AU99" 等
+            
+        Returns:
+            List[StockInfo]: 相关股票列表
+        """
+        if not self._ensure_data_fresh():
+            return []
+        
+        # 提取品种代码
+        underlying = get_futures_product(contract_code)
+        if not underlying:
+            logger.warning(f"无法解析期货合约代码: {contract_code}")
+            return []
+        
+        # 获取期货名称
+        future_name = FUTURES_NAME_MAPPING.get(underlying)
+        if not future_name:
+            logger.warning(f"未找到期货品种: {underlying}")
+            return []
+        
+        # 使用现有方法查询相关股票
+        return self.get_stocks_by_future(future_name)
+    
+    def get_contract_codes_by_stock_name(self, stock_name: str) -> List[str]:
+        """
+        根据股票名称获取相关期货合约代码
+        
+        Args:
+            stock_name: 股票名称
+            
+        Returns:
+            List[str]: 相关期货合约代码列表
+        """
+        if not self._ensure_data_fresh():
+            return []
+        
+        # 获取相关期货品种名称
+        future_names = self.get_futures_by_stock(stock_name)
+        if not future_names:
+            return []
+        
+        # 将期货名称转换为合约代码
+        contract_codes = []
+        for future_name in future_names:
+            contract_code = FUTURES_CODE_MAPPING.get(future_name)
+            if contract_code:
+                contract_codes.append(contract_code)
+            else:
+                # 尝试模糊匹配
+                for name, code in FUTURES_CODE_MAPPING.items():
+                    if future_name in name or name in future_name:
+                        contract_codes.append(code)
+                        break
+        
+        return list(set(contract_codes))  # 去重
+    
+    def get_contract_codes_by_stock_code(self, stock_code: str) -> List[str]:
+        """
+        根据股票代码获取相关期货合约代码
+        
+        Args:
+            stock_code: 股票代码，如 "600362"
+            
+        Returns:
+            List[str]: 相关期货合约代码列表
+        """
+        if not self._ensure_data_fresh():
+            return []
+        
+        # 通过股票代码找到股票名称
+        stock_name = None
+        for future_info in self.futures_data.values():
+            for stock in future_info.related_stocks:
+                if stock.code == stock_code:
+                    stock_name = stock.name
+                    break
+            if stock_name:
+                break
+        
+        if not stock_name:
+            logger.warning(f"未找到股票代码对应的股票名称: {stock_code}")
+            return []
+        
+        # 使用股票名称查询合约代码
+        return self.get_contract_codes_by_stock_name(stock_name)
+    
     def print_summary(self):
         """打印数据统计摘要"""
         if not self._ensure_data_fresh():
@@ -346,6 +441,48 @@ def get_related_futures(stock_name: str) -> List[str]:
     return correlator.get_futures_by_stock(stock_name)
 
 
+def get_stocks_by_contract(contract_code: str) -> List[StockInfo]:
+    """
+    便利函数：根据期货合约代码获取相关股票
+    
+    Args:
+        contract_code: 期货合约代码，如 "CU2501", "AU99" 等
+        
+    Returns:
+        List[StockInfo]: 相关股票列表
+    """
+    correlator = FuturesStockCorrelation()
+    return correlator.get_stocks_by_contract_code(contract_code)
+
+
+def get_contracts_by_stock_code(stock_code: str) -> List[str]:
+    """
+    便利函数：根据股票代码获取相关期货合约代码
+    
+    Args:
+        stock_code: 股票代码，如 "600362"
+        
+    Returns:
+        List[str]: 相关期货合约代码列表
+    """
+    correlator = FuturesStockCorrelation()
+    return correlator.get_contract_codes_by_stock_code(stock_code)
+
+
+def get_contracts_by_stock_name(stock_name: str) -> List[str]:
+    """
+    便利函数：根据股票名称获取相关期货合约代码
+    
+    Args:
+        stock_name: 股票名称
+        
+    Returns:
+        List[str]: 相关期货合约代码列表
+    """
+    correlator = FuturesStockCorrelation()
+    return correlator.get_contract_codes_by_stock_name(stock_name)
+
+
 def main():
     """主函数，演示用法"""
     correlator = FuturesStockCorrelation()
@@ -385,8 +522,32 @@ def main():
         else:
             print(f"{stock_name} -> 未找到相关期货")
     
-    # 示例3：搜索功能
-    print("\n3. 搜索功能演示:")
+    # 示例3：根据期货合约代码查找相关股票
+    print("\n3. 根据期货合约代码查找相关股票:")
+    test_contracts = ["CU2501", "AU2412", "RB2505"]
+    for contract_code in test_contracts:
+        stocks = correlator.get_stocks_by_contract_code(contract_code)
+        if stocks:
+            print(f"{contract_code} -> {len(stocks)}只股票:")
+            for stock in stocks[:3]:  # 只显示前3只
+                print(f"  {stock.code} {stock.name}")
+            if len(stocks) > 3:
+                print(f"  ... 还有{len(stocks)-3}只股票")
+        else:
+            print(f"{contract_code} -> 未找到相关股票")
+    
+    # 示例4：根据股票代码查找相关期货合约
+    print("\n4. 根据股票代码查找相关期货合约:")
+    test_stock_codes = ["600362", "600309", "601899"]
+    for stock_code in test_stock_codes:
+        contracts = correlator.get_contract_codes_by_stock_code(stock_code)
+        if contracts:
+            print(f"{stock_code} -> 相关期货合约: {', '.join(contracts)}")
+        else:
+            print(f"{stock_code} -> 未找到相关期货合约")
+    
+    # 示例5：搜索功能
+    print("\n5. 搜索功能演示:")
     search_results = correlator.search_futures("煤")
     print(f"搜索'煤'相关期货: {len(search_results)}个结果")
     for name, category in search_results:

@@ -9,12 +9,51 @@ from langchain_core.messages import AIMessage
 
 from tradingagents.utils.future_helper import get_futures_name, get_futures_product
 
+# 导入期货股票关联查询功能
+from tradingagents.dataflows.futures_stock_correlation import get_stocks_by_contract
+
 # 导入分析模块日志装饰器
 from tradingagents.utils.tool_logging import log_analyst_module
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
 logger = get_logger("agents")
+
+
+def _get_related_stocks_info(symbol: str) -> str:
+    """
+    获取期货合约相关股票信息
+    
+    Args:
+        symbol: 期货合约代码
+        
+    Returns:
+        str: 格式化的相关股票信息
+    """
+    try:
+        # 调用股票关联查询功能
+        related_stocks = get_stocks_by_contract(symbol)
+        
+        if not related_stocks:
+            return f"💼 {symbol} 暂未找到直接相关的股票"
+        
+        # 格式化股票信息
+        stock_info_lines = []
+        stock_info_lines.append(f"💼 {symbol} 相关股票 ({len(related_stocks)}只):")
+        
+        # 限制显示数量，避免报告过长
+        display_count = min(10, len(related_stocks))
+        for i, stock in enumerate(related_stocks[:display_count], 1):
+            stock_info_lines.append(f"  {i}. {stock.code} {stock.name}")
+        
+        if len(related_stocks) > display_count:
+            stock_info_lines.append(f"  ... 还有 {len(related_stocks) - display_count} 只相关股票")
+        
+        return "\n".join(stock_info_lines)
+        
+    except Exception as e:
+        logger.warning(f"⚠️ [期货基本面分析师] 获取相关股票信息失败: {e}")
+        return f"💼 {symbol} 相关股票信息获取失败: {str(e)}"
 
 
 def _get_futures_name_for_analysis(symbol: str, futures_info: dict) -> str:
@@ -177,8 +216,12 @@ def create_futures_fundamentals_analyst(llm, toolkit):
         futures_name = _get_futures_name_for_analysis(symbol, futures_info)
         category_info = _get_futures_category(symbol)
         
+        # 获取相关股票信息
+        related_stocks_info = _get_related_stocks_info(symbol)
+        
         logger.debug(f"📊 [DEBUG] 期货品种信息: {futures_name} - {category_info['category']}")
         logger.debug(f"📊 [DEBUG] 分析重点: {category_info['analysis_focus']}")
+        logger.debug(f"📊 [DEBUG] 相关股票数量: {related_stocks_info.count('.')}")  # 统计股票数量
         logger.debug(f"📊 [DEBUG] 工具配置检查: online_tools={toolkit.config['online_tools']}")
         
         # 选择工具
@@ -218,6 +261,11 @@ def create_futures_fundamentals_analyst(llm, toolkit):
             "- 提供合理的价格区间和趋势判断"
             "- 包含持仓量、成交量等期货特有指标分析"
             "- 考虑宏观经济因素对期货价格的影响"
+            f"📈 相关股票分析："
+            f"- 在分析报告中必须包含以下相关股票信息："
+            f"{related_stocks_info}"
+            f"- 分析这些相关上市公司对该期货品种的影响"
+            f"- 考虑股票市场表现与期货价格的联动关系"
             "🌍 语言和格式要求："
             "- 所有分析内容必须使用中文"
             "- 投资建议必须使用中文：买入、持有、卖出"
@@ -234,6 +282,7 @@ def create_futures_fundamentals_analyst(llm, toolkit):
             "- 立即调用期货数据工具"
             "- 等待工具返回真实数据"
             "- 基于真实数据进行专业分析"
+            "- 在报告的末尾包含相关股票信息和分析"
             "- 提供具体的价格区间和投资建议"
             "- 使用中文投资建议（买入/持有/卖出）"
             "现在立即开始调用工具！不要说任何其他话！"
@@ -362,6 +411,9 @@ def create_futures_fundamentals_analyst(llm, toolkit):
 
 {combined_data}
 
+📈 相关股票信息：
+{related_stocks_info}
+
 请提供：
 1. 期货品种基本信息分析（{futures_name}，代码：{symbol}）
 2. 供需关系分析
@@ -369,11 +421,14 @@ def create_futures_fundamentals_analyst(llm, toolkit):
 4. 影响价格的关键因素（{analysis_focus_str}）
 5. 价格趋势和区间判断
 6. 投资建议（买入/持有/卖出）
+7. 相关股票分析（包含上述股票代码和名称，分析其对期货价格的影响）
 
 要求：
 - 基于提供的真实数据进行分析
 - 重点关注{category_info['category']}的特有因素
 - 正确使用期货品种名称"{futures_name}"和代码"{symbol}"
+- 必须在报告的末尾包含相关股票的代码和名称
+- 分析股票市场与期货价格的联动关系
 - 价格使用人民币（¥）
 - 投资建议使用中文
 - 分析要详细且专业"""

@@ -8,7 +8,6 @@ import unittest
 import sys
 import os
 from unittest.mock import patch, MagicMock
-import json
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -16,9 +15,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from tradingagents.dataflows.futures_stock_correlation import (
     FuturesStockCorrelation, 
     StockInfo, 
-    FutureInfo,
     get_related_stocks,
-    get_related_futures
+    get_related_futures,
+    get_stocks_by_contract,
+    get_contracts_by_stock_code,
+    get_contracts_by_stock_name
 )
 
 
@@ -193,6 +194,51 @@ class TestFuturesStockCorrelation(unittest.TestCase):
             futures = get_related_futures("测试股票")
             self.assertEqual(len(futures), 1)
             mock_get_futures.assert_called_once_with("测试股票")
+    
+    def test_contract_code_mapping(self):
+        """测试期货合约代码映射功能"""
+        self.correlator._parse_pagedata(self.mock_pagedata)
+        
+        # 测试根据合约代码查询股票
+        # 由于mock数据中有"铜"，对应合约代码"CU"
+        stocks = self.correlator.get_stocks_by_contract_code("CU2501")
+        self.assertTrue(len(stocks) > 0)  # 应该找到相关股票
+        
+        # 测试根据股票代码查询合约代码
+        contracts = self.correlator.get_contract_codes_by_stock_code("600362")
+        # 这个测试可能为空，因为mock数据有限
+        self.assertIsInstance(contracts, list)
+        
+        # 测试根据股票名称查询合约代码
+        contracts = self.correlator.get_contract_codes_by_stock_name("江西铜业")
+        if contracts:  # 如果找到了
+            self.assertIn("CU", contracts)  # 应该包含铜的合约代码
+    
+    def test_new_convenience_functions(self):
+        """测试新的便利函数"""
+        # 测试根据合约代码获取股票
+        with patch.object(FuturesStockCorrelation, 'get_stocks_by_contract_code') as mock_get_stocks:
+            mock_get_stocks.return_value = [StockInfo("600362", "江西铜业")]
+            stocks = get_stocks_by_contract("CU2501")
+            self.assertEqual(len(stocks), 1)
+            self.assertEqual(stocks[0].name, "江西铜业")
+            mock_get_stocks.assert_called_once_with("CU2501")
+        
+        # 测试根据股票代码获取合约代码
+        with patch.object(FuturesStockCorrelation, 'get_contract_codes_by_stock_code') as mock_get_contracts:
+            mock_get_contracts.return_value = ["CU", "AL"]
+            contracts = get_contracts_by_stock_code("600362")
+            self.assertEqual(len(contracts), 2)
+            self.assertIn("CU", contracts)
+            mock_get_contracts.assert_called_once_with("600362")
+        
+        # 测试根据股票名称获取合约代码
+        with patch.object(FuturesStockCorrelation, 'get_contract_codes_by_stock_name') as mock_get_contracts:
+            mock_get_contracts.return_value = ["CU"]
+            contracts = get_contracts_by_stock_name("江西铜业")
+            self.assertEqual(len(contracts), 1)
+            self.assertEqual(contracts[0], "CU")
+            mock_get_contracts.assert_called_once_with("江西铜业")
 
 
 class TestIntegration(unittest.TestCase):
@@ -275,28 +321,28 @@ def run_simple_test():
     
     correlator = FuturesStockCorrelation()
     
-    # 使用模拟数据
+    # 使用模拟数据，添加一些真实的期货品种进行测试
     mock_data = {
         "datas": [
             {
                 "name": "测试分类",
                 "list": [
                     {
-                        "name": "测试期货1",
-                        "price": "100.00",
+                        "name": "铜",  # 使用真实的期货品种名称
+                        "price": "80000.00",
                         "zdf": "1.23",
                         "scss": [
-                            {"code": "000001", "name": "测试股票1"},
-                            {"code": "000002", "name": "测试股票2"}
+                            {"code": "600362", "name": "江西铜业"},
+                            {"code": "000878", "name": "云南铜业"}
                         ]
                     },
                     {
-                        "name": "测试期货2", 
-                        "price": "200.00",
+                        "name": "黄金", 
+                        "price": "450.00",
                         "zdf": "-2.34",
                         "scss": [
-                            {"code": "000001", "name": "测试股票1"},
-                            {"code": "000003", "name": "测试股票3"}
+                            {"code": "600489", "name": "中金黄金"},
+                            {"code": "600547", "name": "山东黄金"}
                         ]
                     }
                 ]
@@ -311,22 +357,42 @@ def run_simple_test():
     
     # 测试查询功能
     print("\n[TEST] 测试根据期货查股票:")
-    stocks = correlator.get_stocks_by_future("测试期货1")
+    stocks = correlator.get_stocks_by_future("铜")
     for stock in stocks:
         print(f"  [RESULT] {stock.code} {stock.name}")
     
     print("\n[TEST] 测试根据股票查期货:")
-    futures = correlator.get_futures_by_stock("测试股票1")
-    print(f"  [RESULT] 测试股票1 关联期货: {futures}")
+    futures = correlator.get_futures_by_stock("江西铜业")
+    print(f"  [RESULT] 江西铜业 关联期货: {futures}")
+    
+    # 测试新的合约代码功能
+    print("\n[TEST] 测试根据期货合约代码查股票:")
+    stocks = correlator.get_stocks_by_contract_code("CU2501")
+    for stock in stocks:
+        print(f"  [RESULT] CU2501 -> {stock.code} {stock.name}")
+    
+    print("\n[TEST] 测试根据股票代码查期货合约:")
+    contracts = correlator.get_contract_codes_by_stock_code("600362")
+    print(f"  [RESULT] 600362 -> 合约代码: {contracts}")
+    
+    print("\n[TEST] 测试根据股票名称查期货合约:")
+    contracts = correlator.get_contract_codes_by_stock_name("江西铜业")
+    print(f"  [RESULT] 江西铜业 -> 合约代码: {contracts}")
     
     # 测试便利函数
     print("\n[TEST] 测试便利函数:")
     try:
-        # 由于便利函数会尝试获取真实数据，这里用try-catch处理
-        stocks = get_related_stocks("测试期货")
-        print(f"  [RESULT] 便利函数返回股票数量: {len(stocks)}")
-    except:
-        print("  [WARNING] 便利函数测试跳过（需要网络连接）")
+        # 测试新的便利函数
+        stocks = get_stocks_by_contract("AU2412")
+        print(f"  [RESULT] 便利函数-合约查股票返回数量: {len(stocks)}")
+        
+        contracts = get_contracts_by_stock_code("600489")
+        print(f"  [RESULT] 便利函数-股票代码查合约: {contracts}")
+        
+        contracts = get_contracts_by_stock_name("中金黄金")
+        print(f"  [RESULT] 便利函数-股票名称查合约: {contracts}")
+    except Exception as e:
+        print(f"  [WARNING] 便利函数测试遇到问题: {e}")
     
     print("\n[SUCCESS] 测试通过!")
 

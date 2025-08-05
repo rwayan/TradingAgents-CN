@@ -12,7 +12,7 @@ from tradingagents.utils.tool_logging import log_analyst_module
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
-logger = get_logger("default")
+logger = get_logger("agents")
 
 
 def _get_futures_technical_focus(symbol: str) -> dict:

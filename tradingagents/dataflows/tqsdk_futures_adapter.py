@@ -334,7 +334,8 @@ class TqSdkFuturesAdapter:
                 df.reset_index(inplace=True)
             
             # 转换日期格式
-            df['date'] = pd.to_datetime(df['datetime']).dt.date
+            from tqsdk.tafunc import time_to_datetime
+            df['date'] = df["datetime"].apply(lambda x: time_to_datetime(x).date())
             
             # 筛选日期范围
             start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
@@ -422,21 +423,24 @@ class TqSdkFuturesAdapter:
             result += f"数据条数: {len(data)}条\n\n"
             
             result += f"💰 最新价格: ¥{latest_price:.2f}\n"
+            result += f"💰 最新价格日期: ¥{latest_data['date']}\n"
             result += f"📈 涨跌额: {change:+.2f} ({change_pct:+.2f}%)\n\n"
             
             # 添加统计信息
-            result += f"📊 价格统计:\n"
+            result += f"📊 区间价格统计:\n"
             result += f"   最高价: ¥{data['high'].max():.2f}\n"
             result += f"   最低价: ¥{data['low'].min():.2f}\n"
             result += f"   平均价: ¥{data['close'].mean():.2f}\n"
-            result += f"   成交量: {data['volume'].sum():,.0f}手\n"
+            result += f"   平均成交量: {data['volume'].mean():,.0f}手\n"
             if 'open_interest' in data.columns:
-                result += f"   持仓量: {data['open_interest'].iloc[-1]:,.0f}手\n"
+                result += f"   最新持仓量: {data['open_interest'].iloc[-1]:,.0f}手\n"
             
-            result += f"\n📈 最近5日数据:\n"
-            recent_data = data.tail(5)[['date', 'open', 'high', 'low', 'close', 'volume']].copy()
+            result += f"\n📈 最近30日数据:\n"
+            recent_data = data.tail(30)[['date', 'open', 'high', 'low', 'close', 'volume','open_interest']].copy()
             result += recent_data.to_string(index=False, float_format='%.2f')
             
+
+
             logger.info(f"✅ 成功获取{futures_info['name']}数据，{len(data)}条记录")
             return result
             

@@ -116,12 +116,12 @@ class TradingAgentsGraph:
             self.deep_thinking_llm = ChatDashScopeOpenAI(
                 model=self.config["deep_think_llm"],
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=self.config.get("max_tokens",3000)
             )
             self.quick_thinking_llm = ChatDashScopeOpenAI(
                 model=self.config["quick_think_llm"],
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=self.config.get("max_tokens",3000)
             )
         elif (self.config["llm_provider"].lower() == "deepseek" or
               "deepseek" in self.config["llm_provider"].lower()):
@@ -141,14 +141,14 @@ class TradingAgentsGraph:
                 api_key=deepseek_api_key,
                 base_url=deepseek_base_url,
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=self.config.get("max_tokens",3000)
             )
             self.quick_thinking_llm = ChatDeepSeek(
                 model=self.config["quick_think_llm"],
                 api_key=deepseek_api_key,
                 base_url=deepseek_base_url,
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=self.config.get("max_tokens",3000)
                 )
 
             logger.info(f"✅ [DeepSeek] 已启用token统计功能")
