@@ -15,7 +15,6 @@ from tradingagents.utils.logging_init import setup_llm_logging
 
 # 导入日志模块
 from tradingagents.utils.logging_manager import get_logger, get_logger_manager
-logger = get_logger('agents')
 logger = setup_llm_logging()
 
 # 导入token跟踪器
@@ -227,6 +226,7 @@ class ChatDeepSeek(ChatOpenAI):
         
         # 返回第一个生成结果的消息
         if result.generations:
+            logger.debug(f"🔍 [DeepSeek] 生成消息: {result.generations[0].message}")
             return result.generations[0].message
         else:
             return AIMessage(content="")

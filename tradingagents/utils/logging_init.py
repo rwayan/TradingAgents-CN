@@ -111,6 +111,9 @@ def log_startup_info():
     
     logger.info("=" * 60)
 
+    llm_logger = setup_llm_logging()
+    llm_logger.debug("start llm logging")
+
 
 def log_shutdown_info():
     """记录应用关闭信息"""
