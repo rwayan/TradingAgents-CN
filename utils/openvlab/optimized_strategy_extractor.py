@@ -23,65 +23,64 @@ if sys.platform == "win32":
     except:
         pass
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.keys import Keys
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from playwright.sync_api import sync_playwright, Page, Browser, BrowserContext
+import asyncio
 
 class OptimizedStrategyExtractor:
     """优化的策略描述提取器"""
     
     def __init__(self, headless: bool = True, timeout: int = 60):
-        self.timeout = timeout
-        self.driver = None
-        self._setup_driver(headless)
+        self.timeout = timeout * 1000  # Playwright uses milliseconds
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
+        self._setup_browser(headless)
     
-    def _setup_driver(self, headless: bool):
-        """设置Chrome WebDriver - 支持Linux无图形界面"""
-        chrome_options = Options()
-        
-        if headless:
-            chrome_options.add_argument("--headless")
-        
-        # Linux无图形界面必需选项
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-plugins")
-        chrome_options.add_argument("--disable-images")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-        
-        # 稳定性选项
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--allow-running-insecure-content")
-        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-        chrome_options.add_argument("--disable-background-timer-throttling")
-        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-        chrome_options.add_argument("--disable-renderer-backgrounding")
-        chrome_options.add_argument("--memory-pressure-off")
-        chrome_options.add_argument("--max_old_space_size=4096")
-        
+    def _setup_browser(self, headless: bool):
+        """设置Playwright浏览器 - 支持Linux无图形界面"""
         try:
-            logging.info("设置ChromeDriver（优化版）...")
-            try:
-                service = Service(ChromeDriverManager().install())
-                self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            except:
-                self.driver = webdriver.Chrome(options=chrome_options)
+            logging.info("设置Playwright浏览器（优化版）...")
             
-            logging.info("ChromeDriver设置成功")
+            self.playwright = sync_playwright().start()
+            
+            # 启动浏览器
+            self.browser = self.playwright.chromium.launch(
+                headless=headless,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-extensions",
+                    "--disable-plugins",
+                    "--disable-images",
+                    "--disable-web-security",
+                    "--allow-running-insecure-content",
+                    "--disable-features=VizDisplayCompositor",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+                    "--memory-pressure-off",
+                    "--max_old_space_size=4096"
+                ]
+            )
+            
+            # 创建浏览器上下文
+            self.context = self.browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            )
+            
+            # 创建新页面
+            self.page = self.context.new_page()
+            
+            # 设置默认超时
+            self.page.set_default_timeout(self.timeout)
+            
+            logging.info("Playwright浏览器设置成功")
             
         except Exception as e:
-            raise Exception(f"无法初始化ChromeDriver: {e}")
-        
-        self.wait = WebDriverWait(self.driver, self.timeout)
+            raise Exception(f"无法初始化Playwright浏览器: {e}")
     
     def extract_precise_strategy_descriptions(self, strategy_code: str, target_price: float, 
                                             output_dir: str = "optimized_results", save_svg_files: bool = False) -> Dict:
@@ -114,7 +113,7 @@ class OptimizedStrategyExtractor:
             # 步骤1: 访问页面
             url = f"https://openvlab.cn/strategy/optimizer/{strategy_code}"
             print(f"🌐 访问页面: {url}")
-            self.driver.get(url)
+            self.page.goto(url)
             time.sleep(8)
             
             # 步骤2: 设置目标价格
@@ -209,13 +208,13 @@ class OptimizedStrategyExtractor:
             input_element = None
             for selector in input_selectors:
                 try:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    elements = self.page.locator(selector).all()
                     print(f"找到 {len(elements)} 个 {selector} 元素")
                     
                     for i, element in enumerate(elements):
-                        if element.is_displayed() and element.is_enabled():
-                            current_value = element.get_attribute('value')
-                            placeholder = element.get_attribute('placeholder')
+                        if element.is_visible() and element.is_enabled():
+                            current_value = element.get_attribute('value') or ''
+                            placeholder = element.get_attribute('placeholder') or ''
                             print(f"  元素 {i+1}: 当前值='{current_value}', 占位符='{placeholder}'")
                             
                             # 判断是否为价格输入框
@@ -254,25 +253,29 @@ class OptimizedStrategyExtractor:
                         time.sleep(0.5)
                         
                         # 输入新价格
-                        input_element.send_keys(str(int(target_price)))
+                        input_element.fill(str(int(target_price)))
                         time.sleep(0.5)
                         
-                        # 触发多种事件
-                        input_element.send_keys(Keys.TAB)
+                        # 触发Tab和Enter键
+                        input_element.press('Tab')
                         time.sleep(0.5)
-                        input_element.send_keys(Keys.ENTER)
+                        input_element.press('Enter')
                         time.sleep(0.5)
                         
                         # JavaScript事件触发
-                        self.driver.execute_script("""
-                            arguments[0].dispatchEvent(new Event('input', {bubbles: true}));
-                            arguments[0].dispatchEvent(new Event('change', {bubbles: true}));
-                            arguments[0].dispatchEvent(new Event('blur', {bubbles: true}));
+                        self.page.evaluate("""
+                            (element) => {
+                                if (element && element.dispatchEvent) {
+                                    element.dispatchEvent(new Event('input', {bubbles: true}));
+                                    element.dispatchEvent(new Event('change', {bubbles: true}));
+                                    element.dispatchEvent(new Event('blur', {bubbles: true}));
+                                }
+                            }
                         """, input_element)
                         time.sleep(1)
                         
                         # 检查是否设置成功
-                        new_value = input_element.get_attribute('value')
+                        new_value = input_element.get_attribute('value') or ''
                         print(f"  设置后的值: {new_value}")
                         
                         if str(int(target_price)) in new_value:
@@ -313,12 +316,14 @@ class OptimizedStrategyExtractor:
             strategy_containers = []
             for selector in container_selectors:
                 try:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    elements = self.page.locator(selector).all()
                     for element in elements:
-                        if element.is_displayed() and element.size['height'] > 300:  # 策略卡片通常比较大
-                            text = element.text.strip()
-                            if text and any(keyword in text for keyword in ['期权', '价差', '买入', '卖出']):
-                                strategy_containers.append(element)
+                        if element.is_visible():  # 策略卡片通常比较大
+                            bbox = element.bounding_box()
+                            if bbox and bbox['height'] > 300:
+                                text = element.inner_text().strip()
+                                if text and any(keyword in text for keyword in ['期权', '价差', '买入', '卖出']):
+                                    strategy_containers.append(element)
                     if strategy_containers:
                         break
                 except Exception as e:
@@ -329,7 +334,7 @@ class OptimizedStrategyExtractor:
             # 从每个策略容器中提取完整策略信息（包含财务数据）
             for i, container in enumerate(strategy_containers):
                 try:
-                    container_text = container.text.strip()
+                    container_text = container.inner_text().strip()
                     lines = [line.strip() for line in container_text.split('\n') if line.strip()]
                     
                     if len(lines) >= 2:
@@ -353,7 +358,6 @@ class OptimizedStrategyExtractor:
                                 'financial_info': financial_info,
                                 'full_description': f"{strategy_name} {action_description}",
                                 'complete_info': f"{strategy_name} {action_description} | {financial_info['summary']}",
-                                'container_position': container.location,
                                 'source': 'strategy_container'
                             }
                             precise_descriptions.append(precise_desc)
@@ -375,7 +379,7 @@ class OptimizedStrategyExtractor:
     def _is_valid_strategy_name(self, name: str) -> bool:
         """验证策略名称是否有效"""
         # 策略名称应该以"期权"或"价差"结尾，长度适中
-        return (len(name) > 2 and len(name) < 15 and
+        return (len(name) > 2 and len(name) < 30 and
                 (name.endswith('期权') or name.endswith('价差')))
     
     def _is_valid_action_description(self, action: str) -> bool:
@@ -406,23 +410,23 @@ class OptimizedStrategyExtractor:
             # 直接查找 grid grid-cols-3 gap-1 rounded 容器
             grid_selector = "div.grid.grid-cols-3.gap-1.rounded"
             
-            financial_grids = container_element.find_elements(By.CSS_SELECTOR, grid_selector)
+            financial_grids = container_element.locator(grid_selector).all()
             
             if financial_grids:
                 for grid in financial_grids:
-                    if grid.is_displayed():
+                    if grid.is_visible():
                         print(f"找到财务grid容器")
                         
                         # 获取grid中的所有直接子元素（应该是3列）
-                        grid_cells = grid.find_elements(By.CSS_SELECTOR, "div")
+                        grid_cells = grid.locator("div").all()
                         
                         print(f"Grid包含 {len(grid_cells)} 个单元格")
                         
                         # 提取每个单元格的文本
                         cell_texts = []
                         for i, cell in enumerate(grid_cells):
-                            if cell.is_displayed():
-                                cell_text = cell.text.strip()
+                            if cell.is_visible():
+                                cell_text = cell.inner_text().strip()
                                 if cell_text:
                                     cell_texts.append(cell_text)
                                     print(f"  单元格{i+1}: {cell_text}")
@@ -465,7 +469,7 @@ class OptimizedStrategyExtractor:
             # 如果没找到grid，回退到全文搜索
             if not any([financial_info['max_loss'], financial_info['expected_profit'], financial_info['win_rate']]):
                 print("未找到财务grid，使用全文搜索")
-                container_text = container_element.text.strip()
+                container_text = container_element.inner_text().strip()
                 lines = container_text.split('\n')
                 
                 for line in lines:
@@ -521,24 +525,26 @@ class OptimizedStrategyExtractor:
             print(f"从策略容器中提取SVG图表")
             
             card_selector = "div.bg-card.text-card-foreground"
-            strategy_containers = self.driver.find_elements(By.CSS_SELECTOR, card_selector)
+            strategy_containers = self.page.locator(card_selector).all()
             
             for i, container in enumerate(strategy_containers):
-                if container.is_displayed() and container.size['height'] > 300:
-                    try:
-                        # 在策略容器中查找SVG（在 div.flex-1.min-h-0 里面）
-                        svg_container_selector = "div.flex-1.min-h-0"
-                        svg_containers = container.find_elements(By.CSS_SELECTOR, svg_container_selector)
-                        
-                        svg_found = False
-                        for svg_container in svg_containers:
-                            if svg_container.is_displayed():
-                                # 在SVG容器中查找实际的SVG元素
-                                svg_elements = svg_container.find_elements(By.TAG_NAME, "svg")
-                                
-                                for svg_element in svg_elements:
-                                    if svg_element.is_displayed():
-                                        svg_content = svg_element.get_attribute('outerHTML')
+                if container.is_visible():
+                    bbox = container.bounding_box()
+                    if bbox and bbox['height'] > 300:
+                        try:
+                            # 在策略容器中查找SVG（在 div.flex-1.min-h-0 里面）
+                            svg_container_selector = "div.flex-1.min-h-0"
+                            svg_containers = container.locator(svg_container_selector).all()
+                            
+                            svg_found = False
+                            for svg_container in svg_containers:
+                                if svg_container.is_visible():
+                                    # 在SVG容器中查找实际的SVG元素
+                                    svg_elements = svg_container.locator("svg").all()
+                                    
+                                    for svg_element in svg_elements:
+                                        if svg_element.is_visible():
+                                            svg_content = svg_element.evaluate("el => el.outerHTML")
                                         
                                         if self._is_strategy_chart_svg(svg_content):
                                             print(f"在容器 {i+1} 中找到策略SVG")
@@ -593,13 +599,13 @@ class OptimizedStrategyExtractor:
                                 
                                 if svg_found:
                                     break
-                        
-                        if not svg_found:
-                            print(f"容器 {i+1} 中未找到SVG")
                             
-                    except Exception as e:
-                        print(f"处理容器 {i+1} 的SVG时出现错误: {e}")
-                        continue
+                            if not svg_found:
+                                print(f"容器 {i+1} 中未找到SVG")
+                                
+                        except Exception as e:
+                            print(f"处理容器 {i+1} 的SVG时出现错误: {e}")
+                            continue
             
             print(f"总共提取到 {len(svg_files)} 个SVG图表")
             
@@ -770,7 +776,7 @@ class OptimizedStrategyExtractor:
         # 对策略按E值排序
         sorted_strategies = sorted(
             results['precise_descriptions'], 
-            key=lambda x: x.get('financial_info', {}).get('e_value', -float('inf')), 
+            key=lambda x: x.get('financial_info', {}).get('e_value') or -float('inf'), 
             reverse=True
         )
         
@@ -1073,9 +1079,18 @@ class OptimizedStrategyExtractor:
         return html_file
     
     def close(self):
-        """关闭WebDriver"""
-        if self.driver:
-            self.driver.quit()
+        """关闭Playwright浏览器"""
+        try:
+            if self.page:
+                self.page.close()
+            if self.context:
+                self.context.close()
+            if self.browser:
+                self.browser.close()
+            if self.playwright:
+                self.playwright.stop()
+        except Exception as e:
+            print(f"关闭浏览器时出现错误: {e}")
     
     def __enter__(self):
         return self
@@ -1089,8 +1104,8 @@ def test_optimized_extractor():
     print("="*60)
     
     # 测试用例
-    strategy = "IM2509"
-    target_price = 8000.0
+    strategy = "au2510"
+    target_price = 770.0
     
     # 测试内存模式（不保存SVG文件）
     print("🪟 测试优化提取器（内存模式）")
