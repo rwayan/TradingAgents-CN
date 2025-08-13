@@ -66,7 +66,7 @@ def render_results(results):
     render_analysis_info(results)
 
     # 详细分析报告
-    render_detailed_analysis(state)
+    render_detailed_analysis(state, decision, stock_symbol)
 
     # 风险提示
     render_risk_warning(is_demo)
@@ -240,7 +240,7 @@ def render_decision_summary(decision, stock_symbol=None):
         with st.expander("🧠 AI分析推理", expanded=True):
             st.markdown(decision['reasoning'])
 
-def render_detailed_analysis(state):
+def render_detailed_analysis(state, decision=None, stock_symbol=None):
     """渲染详细分析报告"""
     
     st.subheader("📋 详细分析报告")
@@ -282,6 +282,12 @@ def render_detailed_analysis(state):
             'title': '📋 投资建议',
             'icon': '📋',
             'description': '具体投资策略、仓位管理建议'
+        },
+        {
+            'key': 'openvlab_strategy_report',
+            'title': '📊 期权策略优化',
+            'icon': '📊',
+            'description': '基于OpenVLab的期权交易策略优化建议'
         }
     ]
     
@@ -290,7 +296,10 @@ def render_detailed_analysis(state):
     
     for i, (tab, module) in enumerate(zip(tabs, analysis_modules)):
         with tab:
-            if module['key'] in state and state[module['key']]:
+            # 特殊处理期权策略模块
+            if module['key'] == 'openvlab_strategy_report':
+                render_openvlab_strategy_tab(decision, stock_symbol, state)
+            elif module['key'] in state and state[module['key']]:
                 st.markdown(f"*{module['description']}*")
                 
                 # 格式化显示内容
@@ -306,6 +315,166 @@ def render_detailed_analysis(state):
                     st.write(content)
             else:
                 st.info(f"暂无{module['title']}数据")
+
+def render_openvlab_strategy_tab(decision, stock_symbol, state):
+    """渲染OpenVLab期权策略分析标签页"""
+    
+    st.markdown("*基于OpenVLab的期权交易策略优化建议*")
+    
+    # 检查是否有现有的期权策略分析结果
+    openvlab_data = state.get('openvlab_strategy_report')
+    if openvlab_data and isinstance(openvlab_data, dict):
+        # 显示已有的分析结果
+        display_openvlab_results(openvlab_data)
+        return
+    
+    # 检查决策结果和目标价格
+    if not decision or not stock_symbol:
+        st.info("⚠️ 期权策略分析需要完整的股票分析结果")
+        st.markdown("请确保已完成股票分析并获得AI投资决策。")
+        return
+    
+    target_price = decision.get('target_price')
+    if not target_price or target_price <= 0:
+        st.warning("⚠️ 期权策略分析需要有效的目标价格")
+        st.markdown("**当前状态**:")
+        st.markdown(f"- 股票代码: {stock_symbol}")
+        st.markdown(f"- 目标价格: {target_price or '未设定'}")
+        st.markdown("**解决方案**:")
+        st.markdown("- 请确保AI分析已完成并给出具体的目标价位")
+        st.markdown("- 目标价格应为正数且合理范围内")
+        return
+    
+    # 显示基本信息
+    st.success(f"✅ 检测到有效的分析参数")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("分析标的", stock_symbol)
+    with col2:
+        st.metric("目标价格", f"¥{target_price:.2f}")
+    
+    # 添加分析按钮
+    if st.button("🚀 开始期权策略分析", type="primary"):
+        perform_openvlab_analysis(stock_symbol, target_price)
+
+def perform_openvlab_analysis(stock_symbol, target_price):
+    """执行OpenVLab期权策略分析"""
+    
+    try:
+        # 导入OpenVLab集成工具
+        from utils.openvlab_integration import get_openvlab_analysis, format_openvlab_summary
+        
+        with st.spinner("正在进行期权策略分析，请稍候..."):
+            st.info("🔄 正在转换股票代码到期货合约...")
+            st.info("🔄 正在调用OpenVLab优化算法...")
+            st.info("🔄 正在生成策略报告...")
+            
+            # 执行分析
+            results = get_openvlab_analysis(stock_symbol, target_price)
+            
+            if results['success']:
+                st.success("✅ 期权策略分析完成！")
+                
+                # 显示结果
+                display_openvlab_results(results)
+                
+                # 将结果保存到session state中以便后续使用
+                if 'analysis_results' not in st.session_state:
+                    st.session_state.analysis_results = {}
+                st.session_state.analysis_results['openvlab_strategy_report'] = results
+                
+            else:
+                st.error("❌ 期权策略分析失败")
+                error_msg = results.get('error', '未知错误')
+                st.error(f"错误信息: {error_msg}")
+                
+                # 显示解决建议
+                with st.expander("💡 故障排除建议"):
+                    st.markdown("""
+                    **可能的解决方案**:
+                    1. 检查网络连接是否正常
+                    2. 确认OpenVLab服务是否可访问  
+                    3. 验证股票代码格式是否正确
+                    4. 检查目标价格是否在合理范围内
+                    5. 查看系统日志获取详细错误信息
+                    """)
+                
+    except Exception as e:
+        st.error("❌ 期权策略分析系统错误")
+        st.error(f"错误详情: {str(e)}")
+        logger.error(f"OpenVLab分析系统错误: {e}", exc_info=True)
+
+def display_openvlab_results(results):
+    """显示OpenVLab分析结果"""
+    
+    # 基本信息显示
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        futures_code = results.get('futures_code', 'N/A')
+        st.metric("期货合约", futures_code)
+    
+    with col2:
+        openvlab_data = results.get('openvlab_results', {})
+        strategy_count = len(openvlab_data.get('precise_descriptions', []))
+        st.metric("策略数量", f"{strategy_count}个")
+    
+    with col3:
+        max_e_value = openvlab_data.get('max_e_value')
+        if max_e_value is not None:
+            st.metric("最高E值", f"{max_e_value:.4f}")
+        else:
+            st.metric("最高E值", "N/A")
+    
+    # 推荐策略
+    best_strategy = openvlab_data.get('best_strategy')
+    if best_strategy:
+        st.subheader("🏆 推荐策略")
+        
+        strategy_desc = best_strategy.get('full_description', 'N/A')
+        st.success(f"**{strategy_desc}**")
+        
+        # 策略详情
+        financial_info = best_strategy.get('financial_info', {})
+        if financial_info:
+            summary = financial_info.get('summary', '')
+            if summary:
+                st.info(f"💡 {summary}")
+    
+    # HTML报告展示
+    html_content = results.get('html_content')
+    if html_content:
+        st.subheader("📊 详细策略图表")
+        
+        # 添加展开/收起选项
+        with st.expander("查看完整策略分析报告", expanded=False):
+            st.components.v1.html(html_content, height=800, scrolling=True)
+    
+    # 策略列表
+    precise_descriptions = openvlab_data.get('precise_descriptions', [])
+    if precise_descriptions:
+        st.subheader("📋 所有策略详情")
+        
+        for i, strategy in enumerate(precise_descriptions, 1):
+            with st.expander(f"策略 {i}: {strategy.get('strategy_name', 'N/A')}"):
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    action_desc = strategy.get('action_description', 'N/A')
+                    st.write(f"**操作**: {action_desc}")
+                    
+                    financial_info = strategy.get('financial_info', {})
+                    if financial_info:
+                        summary = financial_info.get('summary', '')
+                        if summary:
+                            st.write(f"**概要**: {summary}")
+                
+                with col2:
+                    e_value = financial_info.get('e_value') if financial_info else None
+                    if e_value is not None:
+                        st.metric("E值", f"{e_value:.4f}")
+                    else:
+                        st.metric("E值", "N/A")
 
 def render_risk_warning(is_demo=False):
     """渲染风险提示"""

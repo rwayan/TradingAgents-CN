@@ -155,6 +155,61 @@ class ReportExporter:
 
         return content
 
+    def _generate_openvlab_markdown(self, state: Dict[str, Any], results: Dict[str, Any]) -> str:
+        """生成OpenVLab期权策略分析的Markdown内容"""
+        
+        try:
+            # 尝试导入OpenVLab集成工具
+            from utils.openvlab_integration import extract_openvlab_markdown
+            
+            # 检查session state中是否有期权策略分析结果
+            openvlab_data = None
+            
+            # 首先检查state中是否有期权策略报告
+            if 'openvlab_strategy_report' in state:
+                openvlab_data = state['openvlab_strategy_report']
+            
+            # 如果state中没有，检查session state（Streamlit中的临时存储）
+            if not openvlab_data:
+                try:
+                    import streamlit as st
+                    if hasattr(st, 'session_state') and 'analysis_results' in st.session_state:
+                        analysis_results = st.session_state.analysis_results
+                        if 'openvlab_strategy_report' in analysis_results:
+                            openvlab_data = analysis_results['openvlab_strategy_report']
+                except:
+                    pass
+            
+            if openvlab_data and openvlab_data.get('success'):
+                # 使用工具函数生成markdown
+                return extract_openvlab_markdown(openvlab_data)
+            else:
+                # 检查是否有目标价格，如果有但没有期权分析，给出说明
+                decision = results.get('decision', {})
+                target_price = decision.get('target_price')
+                
+                if target_price and target_price > 0:
+                    stock_symbol = results.get('stock_symbol', 'N/A')
+                    return f"""**期权策略分析**
+
+**原始标的**: {stock_symbol}
+**目标价格**: {target_price}
+**状态**: 期权策略分析未执行
+
+*说明: 期权策略分析需要在Web界面中手动触发执行*
+
+**操作建议**:
+1. 在Web界面的"期权策略优化"标签页中点击"开始期权策略分析"按钮
+2. 等待分析完成后重新导出报告以包含期权策略内容
+
+"""
+                else:
+                    return "**期权策略分析**: 需要有效的目标价格才能进行期权策略分析\n\n"
+                    
+        except Exception as e:
+            logger.error(f"生成OpenVLab Markdown内容时出错: {e}")
+            return f"**期权策略分析**: 生成内容时出现错误 - {e}\n\n"
+
     def generate_markdown_report(self, results: Dict[str, Any]) -> str:
         """生成Markdown格式的报告"""
 
@@ -214,14 +269,19 @@ class ReportExporter:
             ('sentiment_report', '💭 市场情绪分析', '投资者情绪、社交媒体情绪指标'),
             ('news_report', '📰 新闻事件分析', '相关新闻事件、市场动态影响分析'),
             ('risk_assessment', '⚠️ 风险评估', '风险因素识别、风险等级评估'),
-            ('investment_plan', '📋 投资建议', '具体投资策略、仓位管理建议')
+            ('investment_plan', '📋 投资建议', '具体投资策略、仓位管理建议'),
+            ('openvlab_strategy_report', '📊 期权策略优化', '基于OpenVLab的期权交易策略优化建议')
         ]
         
         for key, title, description in analysis_modules:
             md_content += f"\n### {title}\n\n"
             md_content += f"*{description}*\n\n"
             
-            if key in state and state[key]:
+            # 特殊处理期权策略模块
+            if key == 'openvlab_strategy_report':
+                openvlab_content = self._generate_openvlab_markdown(state, results)
+                md_content += openvlab_content
+            elif key in state and state[key]:
                 content = state[key]
                 if isinstance(content, str):
                     md_content += f"{content}\n\n"
@@ -553,15 +613,70 @@ def save_modular_reports_to_results_dir(results: Dict[str, Any], stock_symbol: s
                 'filename': 'final_trade_decision.md',
                 'title': f'{stock_symbol} 最终投资决策',
                 'state_key': 'final_trade_decision'
+            },
+            'openvlab_strategy_report': {
+                'filename': 'openvlab_strategy_report.md',
+                'title': f'{stock_symbol} 期权策略优化报告',
+                'state_key': 'openvlab_strategy_report'
             }
         }
 
         # 生成各个模块的报告文件
         for module_key, module_info in report_modules.items():
             content = state.get(module_info['state_key'])
+            
+            # 特殊处理期权策略模块
+            if module_key == 'openvlab_strategy_report':
+                # 如果state中没有，尝试从其他地方获取
+                if not content:
+                    try:
+                        # 尝试从session state获取
+                        import streamlit as st
+                        if hasattr(st, 'session_state') and 'analysis_results' in st.session_state:
+                            analysis_results = st.session_state.analysis_results
+                            if 'openvlab_strategy_report' in analysis_results:
+                                content = analysis_results['openvlab_strategy_report']
+                    except:
+                        pass
+                
+                # 如果有期权策略数据，生成报告
+                if content and isinstance(content, dict) and content.get('success'):
+                    try:
+                        from utils.openvlab_integration import extract_openvlab_markdown
+                        report_content = f"# {module_info['title']}\n\n"
+                        report_content += extract_openvlab_markdown(content)
+                    except Exception as e:
+                        logger.error(f"生成期权策略报告出错: {e}")
+                        report_content = f"# {module_info['title']}\n\n期权策略报告生成出错: {e}\n\n"
+                else:
+                    # 没有期权策略数据，创建占位符
+                    decision = results.get('decision', {})
+                    target_price = decision.get('target_price')
+                    if target_price and target_price > 0:
+                        report_content = f"""# {module_info['title']}
 
-            if content:
-                # 生成模块报告内容
+**原始标的**: {stock_symbol}
+**目标价格**: {target_price}
+**状态**: 期权策略分析未执行
+
+*说明: 期权策略分析需要在Web界面中手动触发执行*
+
+**操作建议**:
+1. 在Web界面的"期权策略优化"标签页中点击"开始期权策略分析"按钮
+2. 等待分析完成后重新导出报告以包含期权策略内容
+"""
+                    else:
+                        report_content = f"# {module_info['title']}\n\n需要有效的目标价格才能进行期权策略分析\n\n"
+                
+                # 保存期权策略报告
+                file_path = reports_dir / module_info['filename']
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(report_content)
+                saved_files[module_key] = str(file_path)
+                logger.info(f"✅ 保存期权策略报告: {file_path}")
+                
+            elif content:
+                # 处理其他常规模块
                 if isinstance(content, str):
                     report_content = f"# {module_info['title']}\n\n{content}"
                 elif isinstance(content, dict):
